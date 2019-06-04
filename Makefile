@@ -1,5 +1,5 @@
 run:
-	go run main.go utils.go
+	go run main.go utils.go api.go
 build:
 	docker build -t hoshoyo/shapass:dblatest -f Dockerfile.postgres .
 rundb:
