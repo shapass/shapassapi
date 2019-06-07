@@ -46,6 +46,7 @@ func loggedIn(r *http.Request) (bool, string) {
 //  - email
 func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check if the user is already logged in, cannot sign up while logged in
 	currentCookie, err := r.Cookie("login")
@@ -95,6 +96,7 @@ func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 //  - password
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	username := r.Form.Get("username")
 	password := r.Form.Get("password")
@@ -145,6 +147,9 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 // HandleLogout deletes the current user login cookie from the database
 // and the client browser.
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	currentCookie, err := r.Cookie("login")
 	if err != nil {
 		// No cookie
@@ -170,6 +175,7 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// If the cookie doesn't exist, the user is not logged in
 	cookie, err := r.Cookie("login")
@@ -240,6 +246,7 @@ func checkLogin(r *http.Request) (data.User, error) {
 
 func HandleSync(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -304,6 +311,7 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 // to directly create a rule without being logged in
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -336,6 +344,7 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 
 func HandleList(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -390,5 +399,9 @@ func main() {
 	http.Handle("/", fs)
 
 	fmt.Println("Listening on port 8000...")
-	http.ListenAndServe(":8000", nil)
+	if len(os.Args) >= 3 {
+		http.ListenAndServeTLS(":8000", os.Args[1], os.Args[2], nil)
+	} else {
+		http.ListenAndServe(":8000", nil)
+	}
 }
