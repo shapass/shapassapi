@@ -10,6 +10,7 @@ import (
 )
 
 type ShaPassRule struct {
+	ID     int
 	Name   string
 	Length int
 	Prefix string
@@ -167,7 +168,7 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 
 	err := row.Scan(&id, &serviceName, &userName)
 	if err != nil {
-		return fmt.Errorf("Could not find user in the database: %v %s, %s", err, name, user.Name)
+		return fmt.Errorf("Could not find user in the database: %v %s, %s", err, name, user.Name.String)
 	}
 
 	if serviceName.Valid {
@@ -229,7 +230,7 @@ func DeleteRule(db *sql.DB, username string, svc string) error {
 
 func RulesList(db *sql.DB, username string) ([]ShaPassRule, error) {
 	query := `
-		SELECT service_name, prefix_salt, suffix_salt, length FROM pattern 
+		SELECT pattern.id, service_name, prefix_salt, suffix_salt, length FROM pattern 
 		INNER JOIN users ON user_id=users.id WHERE name=$1
 	`
 	rows, err := db.Query(query, username)
@@ -241,15 +242,18 @@ func RulesList(db *sql.DB, username string) ([]ShaPassRule, error) {
 
 	rules := []ShaPassRule{}
 	for rows.Next() {
+		var patternID sql.NullInt64
 		var serviceName sql.NullString
 		var prefix sql.NullString
 		var suffix sql.NullString
 		var length sql.NullInt64
-		err := rows.Scan(&serviceName, &prefix, &suffix, &length)
+		err := rows.Scan(&patternID, &serviceName, &prefix, &suffix, &length)
+
 		if err != nil {
-			fmt.Println("Could not scan rows")
+			fmt.Println("Could not scan rows to fetch rule for user:", username)
 		} else {
 			rule := ShaPassRule{
+				ID:     int(patternID.Int64),
 				Name:   serviceName.String,
 				Prefix: prefix.String,
 				Suffix: suffix.String,
@@ -260,4 +264,99 @@ func RulesList(db *sql.DB, username string) ([]ShaPassRule, error) {
 	}
 
 	return rules, nil
+}
+
+func getUserID(db *sql.DB, username string) (int, error) {
+	row := db.QueryRow("SELECT id FROM users WHERE name=$1", username)
+	var id sql.NullInt64
+	err := row.Scan(&id)
+
+	if err != nil {
+		fmt.Println(err)
+		return 0, err
+	}
+	return int(id.Int64), nil
+}
+
+func SyncRules(db *sql.DB, in []ShaPassRule, username string) (retErr []error) {
+	rules, err := RulesList(db, username)
+	if err != nil {
+		retErr = append(retErr, fmt.Errorf("Could not sync, username %s does not exist or service is unavailable", username))
+		return
+	}
+	userID, err := getUserID(db, username)
+	if err != nil {
+		retErr = append(retErr, fmt.Errorf("Could not sync, username %s does not exist or service is unavailable", username))
+		return
+	}
+
+	// transform rules into a map
+	m := make(map[string]ShaPassRule)
+	for _, r := range rules {
+		m[r.Name] = r
+	}
+
+	updateRules := []ShaPassRule{}
+	insertRules := []ShaPassRule{}
+	for _, r := range in {
+		if _, ok := m[r.Name]; ok {
+			// do an update
+			updateRules = append(updateRules, r)
+			delete(m, r.Name)
+		} else {
+			// do an insert
+			insertRules = append(insertRules, r)
+		}
+	}
+
+	db.Exec("BEGIN TRANSACTION")
+
+	// Update rules that already exist
+	for _, u := range updateRules {
+		stmt := `
+			UPDATE pattern SET 
+				length=$1, 
+				prefix_salt=$2, 
+				suffix_salt=$3
+			WHERE user_id=$4 AND service_name=$5
+		`
+		_, err := db.Exec(stmt, u.Length, u.Prefix, u.Suffix, userID, u.Name)
+		if err != nil {
+			fmt.Printf("Error updating rule %s for user %s: %v\n", u.Name, username, err)
+			retErr = append(retErr, fmt.Errorf("Error updating service %s", u.Name))
+		}
+	}
+
+	// Insert new rules
+	if len(insertRules) > 0 {
+		insertStmt := `
+			INSERT INTO pattern (user_id, service_name, prefix_salt, suffix_salt)
+			VALUES 
+		`
+		var svcs []string
+		var args []interface{}
+		for i, rule := range insertRules {
+			index := (i * 4) + 1
+			insertStmt += fmt.Sprintf("($%d, $%d, $%d, $%d)", index, index+1, index+2, index+3)
+			svcs = append(svcs, rule.Name)
+			args = append(args, userID, rule.Name, rule.Prefix, rule.Suffix)
+			if i+1 != len(insertRules) {
+				insertStmt += ", "
+			}
+		}
+		_, err := db.Exec(insertStmt, args...)
+		if err != nil {
+			fmt.Println("Could not insert rules in the database for user:", username, err)
+			retErr = append(retErr, fmt.Errorf("Error registering services: %v", svcs))
+		}
+	}
+	if len(retErr) == 0 {
+		db.Exec("COMMIT")
+	} else {
+		db.Exec("ROLLBACK")
+	}
+
+	// Delete if more recent
+	// 'm' map holds the entries that should be deleted
+	return retErr
 }

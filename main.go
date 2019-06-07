@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -211,6 +212,84 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	LogAndRespond(w, StatusOK, "Deleted service %s successfully!", serviceName)
 }
 
+func checkLogin(r *http.Request) (data.User, error) {
+	// If the cookie doesn't exist, the user is not logged in
+	cookie, err := r.Cookie("login")
+	var logged bool
+	var user data.User
+	if err == nil {
+		// Check is the user is logged in
+		logged, user = data.UserLoggedIn(db, cookie.Value)
+	}
+	if !logged {
+		// Try anyway with username and password
+		username := r.Form.Get("username")
+		password := r.Form.Get("password")
+		if username == "" || password == "" {
+			return data.User{}, fmt.Errorf("Not logged in")
+		}
+		_, err := data.PasswordMatches(db, username, password)
+		if err != nil {
+			return data.User{}, fmt.Errorf("%v", err)
+		}
+		user.Name.String = username
+		user.Name.Valid = true
+	}
+	return user, nil
+}
+
+func HandleSync(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+
+	user, err := checkLogin(r)
+	if err != nil {
+		LogAndRespond(w, StatusError, fmt.Sprintf("%v", err))
+		return
+	}
+
+	type Service struct {
+		Time int64 `json:"time"`
+		Data struct {
+			OutputLength int    `json:"outputLength"`
+			Suffix       string `json:"sufix"`
+		} `json:"data"`
+	}
+	type SyncData struct {
+		Configs map[string]Service `json:"configs"`
+		Time    int64              `json:"time"`
+	}
+
+	syncStr := r.Form.Get("data")
+	if syncStr == "" {
+		LogAndRespond(w, StatusError, "sync api call requires data field")
+		return
+	}
+
+	var rawRules SyncData
+	err = json.Unmarshal([]byte(syncStr), &rawRules)
+	if err != nil {
+		LogAndRespond(w, StatusError, "Invalid format for sync: %v", err)
+		return
+	}
+
+	rules := []data.ShaPassRule{}
+	for k, r := range rawRules.Configs {
+		rules = append(rules, data.ShaPassRule{
+			Name:   k,
+			Length: r.Data.OutputLength,
+			Suffix: r.Data.Suffix,
+		})
+	}
+
+	errs := data.SyncRules(db, rules, user.Name.String)
+	if len(errs) > 0 {
+		LogAndRespond(w, StatusError, fmt.Sprint(errs))
+		return
+	}
+
+	LogAndRespond(w, StatusOK, "Sync successful!")
+}
+
 // HandleCreate creates a rule for a password in the database
 // if one of the same name does not exist.
 // Fields:
@@ -226,30 +305,10 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	// If the cookie doesn't exist, the user is not logged in
-	cookie, err := r.Cookie("login")
+	user, err := checkLogin(r)
 	if err != nil {
-		LogAndRespond(w, StatusError, "Not logged in")
+		LogAndRespond(w, StatusError, fmt.Sprintf("%v", err))
 		return
-	}
-
-	// Check is the user is logged in
-	logged, user := data.UserLoggedIn(db, cookie.Value)
-	if !logged {
-		// Try anyway with username and password
-		username := r.Form.Get("username")
-		password := r.Form.Get("password")
-		if username == "" || password == "" {
-			LogAndRespond(w, StatusError, "Not logged in")
-			return
-		}
-		_, err := data.PasswordMatches(db, username, password)
-		if err != nil {
-			LogAndRespond(w, StatusError, "%v", err)
-			return
-		}
-		user.Name.String = username
-		user.Name.Valid = true
 	}
 
 	prefix := r.Form.Get("prefix")
@@ -278,30 +337,10 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 func HandleList(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	// If the cookie doesn't exist, the user is not logged in
-	cookie, err := r.Cookie("login")
+	user, err := checkLogin(r)
 	if err != nil {
-		LogAndRespond(w, StatusError, "Not logged in")
+		LogAndRespond(w, StatusError, fmt.Sprintf("%v", err))
 		return
-	}
-
-	// Check is the user is logged in
-	logged, user := data.UserLoggedIn(db, cookie.Value)
-	if !logged {
-		// Try anyway with username and password
-		username := r.Form.Get("username")
-		password := r.Form.Get("password")
-		if username == "" || password == "" {
-			LogAndRespond(w, StatusError, "Not logged in")
-			return
-		}
-		_, err := data.PasswordMatches(db, username, password)
-		if err != nil {
-			LogAndRespond(w, StatusError, "%v", err)
-			return
-		}
-		user.Name.String = username
-		user.Name.Valid = true
 	}
 
 	rules, err := data.RulesList(db, user.Name.String)
@@ -345,6 +384,7 @@ func main() {
 	http.HandleFunc("/api/signup", HandleSignUp)
 	http.HandleFunc("/api/logout", HandleLogout)
 	http.HandleFunc("/api/list", HandleList)
+	http.HandleFunc("/api/sync", HandleSync)
 
 	fs := http.FileServer(http.Dir("static/"))
 	http.Handle("/", fs)
