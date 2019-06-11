@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"./data"
 )
@@ -29,19 +32,18 @@ func getIntLengthFromString(length string) int {
 	return int(l)
 }
 
-// loggedIn returns if the user has a valid login and its username in the positive case.
+// loggedIn returns if the user has a valid login and its email in the positive case.
 func loggedIn(r *http.Request) (bool, string) {
 	cookie, err := r.Cookie("login")
 	if err != nil {
 		return false, ""
 	}
 	logged, user := data.UserLoggedIn(db, cookie.Value)
-	return logged, user.Name.String
+	return logged, user.Email.String
 }
 
 // HandleSignUp creates a new user in the database if one does not already exist.
 // Requires fields:
-// 	- username
 //  - password
 //  - email
 func HandleSignUp(w http.ResponseWriter, r *http.Request) {
@@ -62,47 +64,50 @@ func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check fields necessary
-	username := r.Form.Get("username")
 	password := r.Form.Get("password")
 	email := r.Form.Get("email")
 
-	if username == "" || password == "" || email == "" {
-		LogAndRespond(w, StatusError, "Sign up requires fields username, password and email")
+	if strings.ContainsRune(email, ':') {
+		LogAndRespond(w, StatusError, "Invalid email, character ':' is not allowed")
+		return
+	}
+	if password == "" || email == "" {
+		LogAndRespond(w, StatusError, "Sign up requires fields password and email")
 		return
 	}
 
 	// Check if the user already exist, if so, error out
-	if data.UserExists(db, username) {
-		LogAndRespond(w, StatusError, "User %s already exist and cannot be created", username)
+	if data.UserExists(db, email) {
+		LogAndRespond(w, StatusError, "User %s already exist and cannot be created", email)
 		return
 	}
 
 	// Everything is fine, create the user
-	err = data.CreateUser(db, username, password, email)
+	err = data.CreateUser(db, email, password)
 
 	if err != nil {
 		LogAndRespond(w, StatusError, "Could not create user, service unavailable")
 		return
 	}
 
-	LogAndRespond(w, StatusOK, "User %s signed up successfully!", username)
+	LogAndRespond(w, StatusOK, "User %s signed up successfully!", email)
 }
 
 // HandleLogin logins user if it exists and the password matches the one in the database
 // This creates a cookie with key "login" that it saves in the database as the last valid
 // login.
 // Requires fields:
-//  - username
+//  - email
 //  - password
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	username := r.Form.Get("username")
+	email := r.Form.Get("email")
 	password := r.Form.Get("password")
 
-	if username == "" || password == "" {
-		LogAndRespond(w, StatusError, "Login requires fields username and password")
+	if email == "" || password == "" {
+		LogAndRespond(w, StatusError, "Login requires fields email and password")
 		return
 	}
 
@@ -110,7 +115,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	// Do not attempt to log in if so.
 	logged, u := loggedIn(r)
 	if logged {
-		if username == u {
+		if email == u {
 			LogAndRespond(w, StatusError, "Already logged in as %s", u)
 		} else {
 			LogAndRespond(w, StatusError, "Already logged in as %s, logout first", u)
@@ -118,15 +123,20 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// String that will be the cookie
-	str, err := GenerateRandomString(128)
+	// String that will be the cookie is always 64 bytes long,
+	// this will be used to determine where the user email ends
+	// since it is concatenated in the cookie in the form:
+	// user@email.com:cookie
+	str, err := GenerateRandomString(64)
+	str = email + ":" + str
+	cc, err := bcrypt.GenerateFromPassword([]byte(str), 10)
 	if err != nil {
 		LogAndRespond(w, StatusError, "Error trying to login")
 		return
 	}
 
 	// Everything is good, try to log in
-	success, err := data.Login(db, username, password, str)
+	success, err := data.Login(db, email, password, string(cc))
 
 	// Unable to login
 	if !success {
@@ -137,11 +147,11 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	// We could login successfully, set cookie in the client and report success
 	c := http.Cookie{
 		Name:  "login",
-		Value: str,
+		Value: string(str),
 	}
 	http.SetCookie(w, &c)
 
-	LogAndRespond(w, StatusOK, "User %s logged in successfully!", username)
+	LogAndRespond(w, StatusOK, "User %s logged in successfully!", email)
 }
 
 // HandleLogout deletes the current user login cookie from the database
@@ -177,30 +187,10 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// If the cookie doesn't exist, the user is not logged in
-	cookie, err := r.Cookie("login")
+	user, err := checkLogin(r)
 	if err != nil {
-		LogAndRespond(w, StatusError, "Not logged in")
+		LogAndRespond(w, StatusError, "%v", err)
 		return
-	}
-
-	// Check is the user is logged in
-	logged, user := data.UserLoggedIn(db, cookie.Value)
-	if !logged {
-		// Try anyway with username and password
-		username := r.Form.Get("username")
-		password := r.Form.Get("password")
-		if username == "" || password == "" {
-			LogAndRespond(w, StatusError, "Not logged in")
-			return
-		}
-		_, err := data.PasswordMatches(db, username, password)
-		if err != nil {
-			LogAndRespond(w, StatusError, "%v", err)
-			return
-		}
-		user.Name.String = username
-		user.Name.Valid = true
 	}
 
 	serviceName := r.Form.Get("name")
@@ -209,7 +199,7 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = data.DeleteRule(db, user.Name.String, serviceName)
+	err = data.DeleteRule(db, user.Email.String, serviceName)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
 		return
@@ -223,23 +213,25 @@ func checkLogin(r *http.Request) (data.User, error) {
 	cookie, err := r.Cookie("login")
 	var logged bool
 	var user data.User
-	if err == nil {
-		// Check is the user is logged in
-		logged, user = data.UserLoggedIn(db, cookie.Value)
+	if err != nil {
+		return data.User{}, fmt.Errorf("User not logged in")
 	}
+
+	// Check is the user is logged in
+	logged, user = data.UserLoggedIn(db, cookie.Value)
 	if !logged {
-		// Try anyway with username and password
-		username := r.Form.Get("username")
+		// Try anyway with email and password
+		email := r.Form.Get("email")
 		password := r.Form.Get("password")
-		if username == "" || password == "" {
+		if email == "" || password == "" {
 			return data.User{}, fmt.Errorf("Not logged in")
 		}
-		_, err := data.PasswordMatches(db, username, password)
+		_, err := data.PasswordMatches(db, email, password)
 		if err != nil {
 			return data.User{}, fmt.Errorf("%v", err)
 		}
-		user.Name.String = username
-		user.Name.Valid = true
+		user.Email.String = email
+		user.Email.Valid = true
 	}
 	return user, nil
 }
@@ -288,7 +280,7 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	errs := data.SyncRules(db, rules, user.Name.String)
+	errs := data.SyncRules(db, rules, user.Email.String)
 	if len(errs) > 0 {
 		LogAndRespond(w, StatusError, fmt.Sprint(errs))
 		return
@@ -306,7 +298,7 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 //   - suffix   : optional, suffix for the password
 //
 // this can optionally be called with the fields:
-//   - username
+//   - email
 //   - password
 // to directly create a rule without being logged in
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +344,7 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rules, err := data.RulesList(db, user.Name.String)
+	rules, err := data.RulesList(db, user.Email.String)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
 		return

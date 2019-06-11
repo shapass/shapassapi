@@ -12,9 +12,8 @@ EOSQL
 psql -v ON_ERROR_STOP=1 --username admin --dbname shapass <<-EOSQL
     CREATE TABLE users(
         id serial PRIMARY KEY,
-        name VARCHAR(128),
         email VARCHAR(128),
-        password VARCHAR(128),
+        password VARCHAR(255),
         login_cookie VARCHAR(255),
         login_valid BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW(),
