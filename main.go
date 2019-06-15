@@ -353,6 +353,10 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 	LogAndRespondList(w, StatusOK, rules, "Rules successfully fetched")
 }
 
+func HandleTeapot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusTeapot)
+}
+
 // CheckDatabase tries to reconnect to the database when the connection
 // is lost. This function is asyncronous
 func CheckDatabase(db *sql.DB) {
@@ -386,6 +390,9 @@ func main() {
 	http.HandleFunc("/logout", HandleLogout)
 	http.HandleFunc("/list", HandleList)
 	http.HandleFunc("/sync", HandleSync)
+
+	// Ok, this is a joke
+	http.HandleFunc("/teapot", HandleTeapot)
 
 	fmt.Println("Listening on port 8000...")
 	/*
