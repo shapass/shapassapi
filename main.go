@@ -379,21 +379,20 @@ func main() {
 	}
 	go CheckDatabase(db)
 
-	http.HandleFunc("/api/create", HandleCreate)
-	http.HandleFunc("/api/delete", HandleDelete)
-	http.HandleFunc("/api/login", HandleLogin)
-	http.HandleFunc("/api/signup", HandleSignUp)
-	http.HandleFunc("/api/logout", HandleLogout)
-	http.HandleFunc("/api/list", HandleList)
-	http.HandleFunc("/api/sync", HandleSync)
-
-	fs := http.FileServer(http.Dir("static/"))
-	http.Handle("/", fs)
+	http.HandleFunc("/create", HandleCreate)
+	http.HandleFunc("/delete", HandleDelete)
+	http.HandleFunc("/login", HandleLogin)
+	http.HandleFunc("/signup", HandleSignUp)
+	http.HandleFunc("/logout", HandleLogout)
+	http.HandleFunc("/list", HandleList)
+	http.HandleFunc("/sync", HandleSync)
 
 	fmt.Println("Listening on port 8000...")
-	if len(os.Args) >= 3 {
-		http.ListenAndServeTLS(":8000", os.Args[1], os.Args[2], nil)
-	} else {
-		http.ListenAndServe(":8000", nil)
-	}
+	/*
+		@Important: We need to run only allowing 127.0.0.1 (localhost) connections.
+		This is because no firewall rule is set to block port 8000, meaning an http
+		connection would not be blocked and we would not be encrypting. Oh no!
+		Keep the listen this way! Apache is redirecting /api to this service.
+	*/
+	http.ListenAndServe("127.0.0.1:8000", nil)
 }
