@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -13,11 +14,13 @@ import (
 )
 
 type ShaPassRule struct {
-	ID     int
-	Name   string
-	Length int
-	Prefix string
-	Suffix string
+	ID           int
+	Name         string
+	Length       int
+	Prefix       string
+	Suffix       string
+	UpdatedAt    time.Time
+	UpdatedAtInt int64
 }
 
 type User struct {
@@ -29,7 +32,7 @@ type User struct {
 
 func OpenDatabase() (*sql.DB, error) {
 	host := "localhost"
-	port := "5432"
+	port := "5555"
 	user := "admin"
 	password := "postgres"
 	database := "shapass"
@@ -255,7 +258,7 @@ func DeleteRule(db *sql.DB, email string, svc string) error {
 
 func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 	query := `
-		SELECT pattern.id, service_name, prefix_salt, suffix_salt, length FROM pattern 
+		SELECT pattern.id, service_name, prefix_salt, suffix_salt, length, pattern.updated_at FROM pattern 
 		INNER JOIN users ON user_id=users.id WHERE email=$1
 	`
 	rows, err := db.Query(query, email)
@@ -272,18 +275,21 @@ func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 		var prefix sql.NullString
 		var suffix sql.NullString
 		var length sql.NullInt64
-		err := rows.Scan(&patternID, &serviceName, &prefix, &suffix, &length)
+		var updatedAt time.Time
+		err := rows.Scan(&patternID, &serviceName, &prefix, &suffix, &length, &updatedAt)
 
 		if err != nil {
 			fmt.Println("Could not scan rows to fetch rule for user:", email)
 		} else {
 			rule := ShaPassRule{
-				ID:     int(patternID.Int64),
-				Name:   serviceName.String,
-				Prefix: prefix.String,
-				Suffix: suffix.String,
-				Length: int(length.Int64),
+				ID:        int(patternID.Int64),
+				Name:      serviceName.String,
+				Prefix:    prefix.String,
+				Suffix:    suffix.String,
+				Length:    int(length.Int64),
+				UpdatedAt: updatedAt,
 			}
+
 			rules = append(rules, rule)
 		}
 	}
@@ -303,16 +309,17 @@ func getUserID(db *sql.DB, email string) (int, error) {
 	return int(id.Int64), nil
 }
 
-func SyncRules(db *sql.DB, in []ShaPassRule, email string) (retErr []error) {
+func SyncRules(db *sql.DB, in []ShaPassRule, email string) []error {
+	retErr := []error{}
 	rules, err := RulesList(db, email)
 	if err != nil {
 		retErr = append(retErr, fmt.Errorf("Could not sync, email %s does not exist or service is unavailable", email))
-		return
+		return retErr
 	}
 	userID, err := getUserID(db, email)
 	if err != nil {
 		retErr = append(retErr, fmt.Errorf("Could not sync, username %s does not exist or service is unavailable", email))
-		return
+		return retErr
 	}
 
 	// transform rules into a map
@@ -326,6 +333,15 @@ func SyncRules(db *sql.DB, in []ShaPassRule, email string) (retErr []error) {
 	for _, r := range in {
 		if _, ok := m[r.Name]; ok {
 			// do an update
+
+			// TODO(psv): when the timestamp format is decided
+			// put this back on, for now we always update the rule
+			//currentTime := m[r.Name].UpdatedAt
+			//incomeTime := time.Unix(r.UpdatedAtInt, 0)
+			//if incomeTime.After(currentTime) {
+			// append rule here
+			//}
+
 			updateRules = append(updateRules, r)
 			delete(m, r.Name)
 		} else {

@@ -32,6 +32,13 @@ func getIntLengthFromString(length string) int {
 	return int(l)
 }
 
+func allowOnlyPOST(r *http.Request, apiPath string) error {
+	if r.Method != http.MethodPost {
+		return fmt.Errorf("The %s API requires POST", apiPath)
+	}
+	return nil
+}
+
 // loggedIn returns if the user has a valid login and its email in the positive case.
 func loggedIn(r *http.Request) (bool, string) {
 	cookie, err := r.Cookie("login")
@@ -47,6 +54,13 @@ func loggedIn(r *http.Request) (bool, string) {
 //  - password
 //  - email
 func HandleSignUp(w http.ResponseWriter, r *http.Request) {
+	// Allow only POST requests
+	err := allowOnlyPOST(r, "signup")
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -100,6 +114,13 @@ func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 //  - email
 //  - password
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
+	// Allow only POST requests
+	err := allowOnlyPOST(r, "login")
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -151,7 +172,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &c)
 
-	LogAndRespond(w, StatusOK, "User %s logged in successfully!", email)
+	LogAndRespondLogin(w, StatusOK, string(str), "User %s logged in successfully!", email)
 }
 
 // HandleLogout deletes the current user login cookie from the database
@@ -184,6 +205,13 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
+	// Allow only POST requests
+	err := allowOnlyPOST(r, "delete")
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -213,18 +241,30 @@ func checkLogin(r *http.Request) (data.User, error) {
 	cookie, err := r.Cookie("login")
 	var logged bool
 	var user data.User
-	if err != nil {
-		return data.User{}, fmt.Errorf("User not logged in")
+	if err == nil {
+		// Check is the user is logged in
+		logged, user = data.UserLoggedIn(db, cookie.Value)
+		if logged {
+			return user, nil
+		}
 	}
 
-	// Check is the user is logged in
-	logged, user = data.UserLoggedIn(db, cookie.Value)
-	if !logged {
+	// Accept loginToken from the user but only through POST
+	loginToken := r.Form.Get("loginToken")
+	if loginToken != "" && r.Method == http.MethodPost {
+		logged, user = data.UserLoggedIn(db, loginToken)
+		if logged {
+			return user, nil
+		}
+	}
+
+	if !logged && r.Method == http.MethodPost {
 		// Try anyway with email and password
 		email := r.Form.Get("email")
 		password := r.Form.Get("password")
+
 		if email == "" || password == "" {
-			return data.User{}, fmt.Errorf("Not logged in")
+			return data.User{}, fmt.Errorf("User not logged in")
 		}
 		_, err := data.PasswordMatches(db, email, password)
 		if err != nil {
@@ -232,11 +272,21 @@ func checkLogin(r *http.Request) (data.User, error) {
 		}
 		user.Email.String = email
 		user.Email.Valid = true
+
+		return user, nil
 	}
-	return user, nil
+
+	return user, fmt.Errorf("User not logged in")
 }
 
 func HandleSync(w http.ResponseWriter, r *http.Request) {
+	// Allow only POST requests
+	err := allowOnlyPOST(r, "sync")
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -274,9 +324,10 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 	rules := []data.ShaPassRule{}
 	for k, r := range rawRules.Configs {
 		rules = append(rules, data.ShaPassRule{
-			Name:   k,
-			Length: r.Data.OutputLength,
-			Suffix: r.Data.Suffix,
+			Name:         k,
+			Length:       r.Data.OutputLength,
+			Suffix:       r.Data.Suffix,
+			UpdatedAtInt: r.Time,
 		})
 	}
 
@@ -287,6 +338,18 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	LogAndRespond(w, StatusOK, "Sync successful!")
+}
+
+func HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	user, err := checkLogin(r)
+	if err != nil {
+		LogAndRespond(w, StatusError, "User not logged in")
+	} else {
+		LogAndRespond(w, StatusOK, "%s", user.Email.String)
+	}
 }
 
 // HandleCreate creates a rule for a password in the database
@@ -302,6 +365,13 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 //   - password
 // to directly create a rule without being logged in
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
+	// Allow only POST requests
+	err := allowOnlyPOST(r, "create")
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
 	r.ParseForm()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -383,6 +453,7 @@ func main() {
 	}
 	go CheckDatabase(db)
 
+	http.HandleFunc("/whoami", HandleWhoAmI)
 	http.HandleFunc("/create", HandleCreate)
 	http.HandleFunc("/delete", HandleDelete)
 	http.HandleFunc("/login", HandleLogin)

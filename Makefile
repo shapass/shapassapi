@@ -10,4 +10,4 @@ build-dev:
 	docker build -t hoshoyo/shapass:dblatest -f Dockerfile.postgres .
 	go build main.go utils.go api.go
 rundb-dev:
-	docker run -ti -p 5432:5432 hoshoyo/shapass:dblatest
+	docker run -ti -p 5555:5432 hoshoyo/shapass:dblatest
