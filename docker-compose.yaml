@@ -1,0 +1,18 @@
+version: "3"
+services:
+  shapass:
+    image: hoshoyo/shapass
+    ports:
+      - "8000:8000"
+    networks:
+      - shapass-net-dev
+  postgres:
+    image: hoshoyo/shapass-db
+    ports:
+      - "5555:5432"
+    networks:
+      - shapass-net-dev
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres.local:5432
+networks:
+  shapass-net-dev:

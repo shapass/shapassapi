@@ -31,7 +31,7 @@ type User struct {
 }
 
 func OpenDatabase() (*sql.DB, error) {
-	host := "localhost"
+	host := "postgres"
 	port := "5432"
 	user := "admin"
 	password := "postgres"

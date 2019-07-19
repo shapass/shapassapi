@@ -1,0 +1,10 @@
+FROM golang:1.12
+
+RUN go get github.com/lib/pq && \
+    go get golang.org/x/crypto/bcrypt
+
+WORKDIR /api
+
+COPY . /api
+
+CMD ["go", "run", "main.go", "utils.go", "api.go"]
