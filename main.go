@@ -32,6 +32,13 @@ func getIntLengthFromString(length string) int {
 	return int(l)
 }
 
+func allowCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST")
+	w.Header().Set("Access-Control-Allow-Headers", "Access-Control-Allow-Headers, Origin, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers")
+}
+
 func allowOnlyPOST(r *http.Request, apiPath string) error {
 	if r.Method != http.MethodPost {
 		return fmt.Errorf("The %s API requires POST", apiPath)
@@ -54,6 +61,8 @@ func loggedIn(r *http.Request) (bool, string) {
 //  - password
 //  - email
 func HandleSignUp(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	// Allow only POST requests
 	err := allowOnlyPOST(r, "signup")
 	if err != nil {
@@ -62,7 +71,6 @@ func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check if the user is already logged in, cannot sign up while logged in
 	currentCookie, err := r.Cookie("login")
@@ -114,6 +122,8 @@ func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 //  - email
 //  - password
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	// Allow only POST requests
 	err := allowOnlyPOST(r, "login")
 	if err != nil {
@@ -122,7 +132,6 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	email := r.Form.Get("email")
 	password := r.Form.Get("password")
@@ -178,8 +187,8 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 // HandleLogout deletes the current user login cookie from the database
 // and the client browser.
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	currentCookie, err := r.Cookie("login")
 	if err != nil {
@@ -205,6 +214,8 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	// Allow only POST requests
 	err := allowOnlyPOST(r, "delete")
 	if err != nil {
@@ -213,7 +224,6 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -280,6 +290,8 @@ func checkLogin(r *http.Request) (data.User, error) {
 }
 
 func HandleSync(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	// Allow only POST requests
 	err := allowOnlyPOST(r, "sync")
 	if err != nil {
@@ -288,7 +300,6 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -341,8 +352,9 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -365,6 +377,8 @@ func HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 //   - password
 // to directly create a rule without being logged in
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	// Allow only POST requests
 	err := allowOnlyPOST(r, "create")
 	if err != nil {
@@ -373,7 +387,6 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
@@ -405,8 +418,9 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleList(w http.ResponseWriter, r *http.Request) {
+	allowCORS(w)
+
 	r.ParseForm()
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	user, err := checkLogin(r)
 	if err != nil {
