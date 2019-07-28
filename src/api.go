@@ -1,22 +1,80 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
-	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"./data"
+	"golang.org/x/crypto/bcrypt"
 )
 
-var db *sql.DB
-var connected bool
+type APIStatus string
+
+const StatusOK APIStatus = "OK"
+const StatusError APIStatus = "ERROR"
+
+type APIResponse struct {
+	Status  string
+	Message string
+}
+
+func LogAndRespond(w http.ResponseWriter, status APIStatus, message string, args ...interface{}) {
+	fmt.Printf(message, args...)
+	fmt.Printf("\n")
+
+	r := APIResponse{
+		Status:  string(status),
+		Message: fmt.Sprintf(message, args...),
+	}
+	bytes, _ := json.Marshal(&r)
+
+	fmt.Fprintf(w, string(bytes))
+}
+
+type APIList struct {
+	Status  string
+	Message string
+	Rules   []data.ShaPassRule
+}
+
+func LogAndRespondList(w http.ResponseWriter, status APIStatus, rules []data.ShaPassRule, message string, args ...interface{}) {
+	fmt.Printf(message, args...)
+	fmt.Printf("\n")
+
+	r := APIList{
+		Status:  string(status),
+		Message: fmt.Sprintf(message, args...),
+		Rules:   rules,
+	}
+
+	bytes, _ := json.Marshal(&r)
+	fmt.Fprintf(w, string(bytes))
+}
+
+type APILogin struct {
+	Status  string
+	Message string
+	Token   string
+}
+
+func LogAndRespondLogin(w http.ResponseWriter, status APIStatus, token string, message string, args ...interface{}) {
+	fmt.Printf(message, args...)
+	fmt.Printf("\n")
+
+	r := APILogin{
+		Status:  string(status),
+		Message: fmt.Sprintf(message, args...),
+		Token:   token,
+	}
+
+	bytes, _ := json.Marshal(&r)
+	fmt.Fprintf(w, string(bytes))
+}
+
+// Functions
 
 func getIntLengthFromString(length string) int {
 	var l int64
@@ -30,20 +88,6 @@ func getIntLengthFromString(length string) int {
 		}
 	}
 	return int(l)
-}
-
-func allowCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	w.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST")
-	w.Header().Set("Access-Control-Allow-Headers", "Access-Control-Allow-Headers, Origin, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers")
-}
-
-func allowOnlyPOST(r *http.Request, apiPath string) error {
-	if r.Method != http.MethodPost {
-		return fmt.Errorf("The %s API requires POST", apiPath)
-	}
-	return nil
 }
 
 // loggedIn returns if the user has a valid login and its email in the positive case.
@@ -61,17 +105,6 @@ func loggedIn(r *http.Request) (bool, string) {
 //  - password
 //  - email
 func HandleSignUp(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	// Allow only POST requests
-	err := allowOnlyPOST(r, "signup")
-	if err != nil {
-		LogAndRespond(w, StatusError, "%v", err)
-		return
-	}
-
-	r.ParseForm()
-
 	// Check if the user is already logged in, cannot sign up while logged in
 	currentCookie, err := r.Cookie("login")
 	logged := false
@@ -122,17 +155,6 @@ func HandleSignUp(w http.ResponseWriter, r *http.Request) {
 //  - email
 //  - password
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	// Allow only POST requests
-	err := allowOnlyPOST(r, "login")
-	if err != nil {
-		LogAndRespond(w, StatusError, "%v", err)
-		return
-	}
-
-	r.ParseForm()
-
 	email := r.Form.Get("email")
 	password := r.Form.Get("password")
 
@@ -187,9 +209,6 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 // HandleLogout deletes the current user login cookie from the database
 // and the client browser.
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-	r.ParseForm()
-
 	currentCookie, err := r.Cookie("login")
 	if err != nil {
 		// No cookie
@@ -214,17 +233,6 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	// Allow only POST requests
-	err := allowOnlyPOST(r, "delete")
-	if err != nil {
-		LogAndRespond(w, StatusError, "%v", err)
-		return
-	}
-
-	r.ParseForm()
-
 	user, err := checkLogin(r)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
@@ -290,17 +298,6 @@ func checkLogin(r *http.Request) (data.User, error) {
 }
 
 func HandleSync(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	// Allow only POST requests
-	err := allowOnlyPOST(r, "sync")
-	if err != nil {
-		LogAndRespond(w, StatusError, "%v", err)
-		return
-	}
-
-	r.ParseForm()
-
 	user, err := checkLogin(r)
 	if err != nil {
 		LogAndRespond(w, StatusError, fmt.Sprintf("%v", err))
@@ -352,10 +349,6 @@ func HandleSync(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	r.ParseForm()
-
 	user, err := checkLogin(r)
 	if err != nil {
 		LogAndRespond(w, StatusError, "User not logged in")
@@ -377,17 +370,6 @@ func HandleWhoAmI(w http.ResponseWriter, r *http.Request) {
 //   - password
 // to directly create a rule without being logged in
 func HandleCreate(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	// Allow only POST requests
-	err := allowOnlyPOST(r, "create")
-	if err != nil {
-		LogAndRespond(w, StatusError, "%v", err)
-		return
-	}
-
-	r.ParseForm()
-
 	user, err := checkLogin(r)
 	if err != nil {
 		LogAndRespond(w, StatusError, fmt.Sprintf("%v", err))
@@ -418,10 +400,6 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleList(w http.ResponseWriter, r *http.Request) {
-	allowCORS(w)
-
-	r.ParseForm()
-
 	user, err := checkLogin(r)
 	if err != nil {
 		LogAndRespond(w, StatusError, fmt.Sprintf("%v", err))
@@ -435,56 +413,4 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	LogAndRespondList(w, StatusOK, rules, "Rules successfully fetched")
-}
-
-func HandleTeapot(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusTeapot)
-}
-
-// CheckDatabase tries to reconnect to the database when the connection
-// is lost. This function is asyncronous
-func CheckDatabase(db *sql.DB) {
-	for {
-		err := db.Ping()
-		if err != nil {
-			fmt.Println(err)
-			connected = false
-		} else {
-			if !connected {
-				fmt.Println("Connected")
-			}
-			connected = true
-		}
-		time.Sleep(time.Second * 3)
-	}
-}
-
-func main() {
-	var err error
-	db, err = data.OpenDatabase()
-	if err != nil {
-		os.Exit(1)
-	}
-	go CheckDatabase(db)
-
-	http.HandleFunc("/whoami", HandleWhoAmI)
-	http.HandleFunc("/create", HandleCreate)
-	http.HandleFunc("/delete", HandleDelete)
-	http.HandleFunc("/login", HandleLogin)
-	http.HandleFunc("/signup", HandleSignUp)
-	http.HandleFunc("/logout", HandleLogout)
-	http.HandleFunc("/list", HandleList)
-	http.HandleFunc("/sync", HandleSync)
-
-	// Ok, this is a joke
-	http.HandleFunc("/teapot", HandleTeapot)
-
-	fmt.Println("Listening on port 8000...")
-	/*
-		@Important: We need to run only allowing 127.0.0.1 (localhost) connections.
-		This is because no firewall rule is set to block port 8000, meaning an http
-		connection would not be blocked and we would not be encrypting. Oh no!
-		Keep the listen this way! Apache is redirecting /api to this service.
-	*/
-	http.ListenAndServe("127.0.0.1:8000", nil)
 }

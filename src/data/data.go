@@ -55,6 +55,25 @@ func OpenDatabase() (*sql.DB, error) {
 	return db, nil
 }
 
+// CheckDatabase tries to reconnect to the database when the connection
+// is lost. This function is asyncronous
+func CheckDatabase(db *sql.DB) {
+	var connected bool
+	for {
+		err := db.Ping()
+		if err != nil {
+			fmt.Println(err)
+			connected = false
+		} else {
+			if !connected {
+				fmt.Println("Connected")
+			}
+			connected = true
+		}
+		time.Sleep(time.Second * 3)
+	}
+}
+
 func Sha256String(s string) string {
 	bytes := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(bytes[:])

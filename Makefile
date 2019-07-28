@@ -1,9 +1,9 @@
 run-prod:
 	./main
 build-prod:
-	go build main.go utils.go api.go
+	go build src/*.go
 run-dev:
-	go run main.go utils.go api.go
+	go run src/*.go
 build-dev:
 	go build main.go utils.go api.go
 rundb-dev:
