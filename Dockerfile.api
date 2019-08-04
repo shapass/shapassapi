@@ -7,4 +7,6 @@ WORKDIR /api
 
 COPY . /api
 
-CMD ["go", "run", "main.go", "utils.go", "api.go"]
+RUN go build src/*.go
+
+CMD ["./apiv2"]

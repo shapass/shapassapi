@@ -29,10 +29,8 @@ type User struct {
 	LastLogin      sql.NullString
 }
 
-func OpenDatabase(host string) (*sql.DB, error) {
-	port := "5555"
+func OpenDatabase(host string, port string, password string) (*sql.DB, error) {
 	user := "admin"
-	password := "postgres"
 	database := "shapass"
 	ssl := "disable"
 

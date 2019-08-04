@@ -20,8 +20,22 @@ var globalEmailPassword string
 var globalShapassResetLink string
 
 func main() {
+	dbport := os.Getenv("SHAPASS_DATABASE_PORT")
+	dbhost := os.Getenv("SHAPASS_DATABASE_HOST")
+	dbpass := os.Getenv("SHAPASS_DATABASE_PASSWORD")
+
+	if dbport == "" {
+		dbport = "5432"
+	}
+	if dbhost == "" {
+		dbhost = "localhost"
+	}
+	if dbpass == "" {
+		dbpass = "postgres"
+	}
+
 	var err error
-	db, err = data.OpenDatabase("localhost")
+	db, err = data.OpenDatabase(dbhost, dbport, dbpass)
 	if err != nil {
 		os.Exit(1)
 	}
@@ -46,12 +60,17 @@ func main() {
 	// Ok, this is a joke
 	http.HandleFunc("/teapot", HandleTeapot)
 
-	fmt.Println("Listening on port 8888...")
 	/*
 		@Important: We need to run only allowing 127.0.0.1 (localhost) connections.
 		This is because no firewall rule is set to block port 8000, meaning an http
 		connection would not be blocked and we would not be encrypting. Oh no!
 		Keep the listen this way! Apache is redirecting /api to this service.
 	*/
-	http.ListenAndServe("127.0.0.1:8888", nil)
+	apiHost := os.Getenv("SHAPASS_API_HOST")
+	if apiHost == "" {
+		apiHost = "127.0.0.1"
+	}
+
+	fmt.Printf("Listening on %s:8000...\n", apiHost)
+	http.ListenAndServe(apiHost+":8000", nil)
 }
