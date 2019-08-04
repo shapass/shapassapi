@@ -5,8 +5,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
     CREATE USER admin WITH SUPERUSER PASSWORD 'postgres';
     CREATE DATABASE shapass;
     GRANT ALL PRIVILEGES ON DATABASE shapass TO admin;
-    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-    CREATE TYPE password_rule AS ENUM ('default');
 EOSQL
 
 psql -v ON_ERROR_STOP=1 --username admin --dbname shapass <<-EOSQL
@@ -14,8 +12,9 @@ psql -v ON_ERROR_STOP=1 --username admin --dbname shapass <<-EOSQL
         id serial PRIMARY KEY,
         email VARCHAR(128),
         password VARCHAR(255),
-        login_cookie VARCHAR(255),
-        login_valid BOOLEAN DEFAULT false,
+        password_reset_token VARCHAR(255),
+        last_password_reset_time TIMESTAMP,
+        last_login TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     );
@@ -30,6 +29,16 @@ psql -v ON_ERROR_STOP=1 --username admin --dbname shapass <<-EOSQL
         suffix_salt VARCHAR(32),
         
         created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, service_name)
+    );
+
+    CREATE TABLE login(
+        id serial PRIMARY KEY,
+        user_id INT REFERENCES users(id),
+        login_token VARCHAR(255),
+
+        created_at TIMESTAMP DEFAULT NOW(),
+        expire_at TIMESTAMP
     );
 EOSQL

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"strconv"
 )
 
 // GenerateRandomBytes returns securely generated random bytes.
@@ -28,4 +29,18 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 func GenerateRandomString(s int) (string, error) {
 	b, err := GenerateRandomBytes(s)
 	return base64.URLEncoding.EncodeToString(b), err
+}
+
+func getIntLengthFromString(length string) int {
+	var l int64
+	if length == "" {
+		l = 32
+	} else {
+		var err error
+		l, err = strconv.ParseInt(length, 10, 64)
+		if err != nil {
+			l = 32
+		}
+	}
+	return int(l)
 }

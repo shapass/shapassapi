@@ -1,3 +1,6 @@
+run:
+	go run src/*.go
+
 run-prod:
 	./main
 build-prod:
@@ -5,7 +8,7 @@ build-prod:
 run-dev:
 	go run src/*.go
 build-dev:
-	go build main.go utils.go api.go
+	go build src/*.go
 rundb-dev:
 	docker run -ti -p 5555:5432 hoshoyo/shapass-db:latest
 docker-build:

@@ -1,11 +1,11 @@
 version: "3"
 services:
-  shapass:
-    image: hoshoyo/shapass
-    ports:
-      - "8000:8000"
-    networks:
-      - shapass-net-dev
+  #shapass:
+  #  image: hoshoyo/shapass
+  #  ports:
+  #    - "8000:8000"
+  #  networks:
+  #    - shapass-net-dev
   postgres:
     image: hoshoyo/shapass-db
     ports:
