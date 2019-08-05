@@ -3,7 +3,7 @@ set -e
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
     CREATE USER admin WITH SUPERUSER PASSWORD 'postgres';
-    CREATE DATABASE shapass;
+    CREATE DATABASE shapassapi;
     GRANT ALL PRIVILEGES ON DATABASE shapass TO admin;
 EOSQL
 
