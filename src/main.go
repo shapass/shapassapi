@@ -45,17 +45,15 @@ func main() {
 	globalEmail = os.Getenv("ZOHO_SHAPASS_EMAIL")
 	globalShapassResetLink = "https://shapass.com/shapass/reset"
 
-	http.HandleFunc("/v2/signup", HandleMiddleware(HandleSignUpV2, CheckRequest))
-	http.HandleFunc("/v2/login", HandleMiddleware(HandleLoginV2, CheckRequest))
-	http.HandleFunc("/v2/list", HandleMiddleware(HandleListV2, CheckRequest))
-	http.HandleFunc("/v2/create", HandleMiddleware(HandleCreateV2, CheckRequest))
-	http.HandleFunc("/v2/delete", HandleMiddleware(HandleDeleteV2, CheckRequest))
-	http.HandleFunc("/v2/whoami", HandleMiddleware(HandleWhoAmIV2, CheckRequest))
-	http.HandleFunc("/v2/logout", HandleMiddleware(HandleLogoutV2, CheckRequest))
-	http.HandleFunc("/v2/deleteaccount", HandleMiddleware(HandleDeleteAccount, CheckRequest))
-	http.HandleFunc("/v2/resetpassword", HandleMiddleware(HandleResetPassword, CheckRequest))
-
-	//http.HandleFunc("/v2/sync", HandleMiddleware(HandleSyncV2, CheckRequest))
+	http.HandleFunc("/signup", HandleMiddleware(HandleSignUpV2, CheckRequest))
+	http.HandleFunc("/login", HandleMiddleware(HandleLoginV2, CheckRequest))
+	http.HandleFunc("/list", HandleMiddleware(HandleListV2, CheckRequest))
+	http.HandleFunc("/create", HandleMiddleware(HandleCreateV2, CheckRequest))
+	http.HandleFunc("/delete", HandleMiddleware(HandleDeleteV2, CheckRequest))
+	http.HandleFunc("/whoami", HandleMiddleware(HandleWhoAmIV2, CheckRequest))
+	http.HandleFunc("/logout", HandleMiddleware(HandleLogoutV2, CheckRequest))
+	http.HandleFunc("/deleteaccount", HandleMiddleware(HandleDeleteAccount, CheckRequest))
+	http.HandleFunc("/resetpassword", HandleMiddleware(HandleResetPassword, CheckRequest))
 
 	// Ok, this is a joke
 	http.HandleFunc("/teapot", HandleTeapot)
