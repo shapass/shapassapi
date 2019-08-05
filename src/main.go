@@ -23,6 +23,7 @@ func main() {
 	dbport := os.Getenv("SHAPASS_DATABASE_PORT")
 	dbhost := os.Getenv("SHAPASS_DATABASE_HOST")
 	dbpass := os.Getenv("SHAPASS_DATABASE_PASSWORD")
+	dbname := os.Getenv("SHAPASS_DATABASE_NAME")
 
 	if dbport == "" {
 		dbport = "5432"
@@ -33,9 +34,12 @@ func main() {
 	if dbpass == "" {
 		dbpass = "postgres"
 	}
+	if dbname == "" {
+		dbname = "shapassapi"
+	}
 
 	var err error
-	db, err = data.OpenDatabase(dbhost, dbport, dbpass)
+	db, err = data.OpenDatabase(dbhost, dbport, dbpass, dbname)
 	if err != nil {
 		os.Exit(1)
 	}
