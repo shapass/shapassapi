@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"strconv"
 )
 
@@ -43,4 +44,9 @@ func getIntLengthFromString(length string) int {
 		}
 	}
 	return int(l)
+}
+
+func IsJSON(str string) bool {
+	var js json.RawMessage
+	return json.Unmarshal([]byte(str), &js) == nil
 }

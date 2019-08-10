@@ -78,6 +78,26 @@ func LogAndRespondLogin(w http.ResponseWriter, status APIStatus, token string, m
 	fmt.Fprintf(w, string(bytes))
 }
 
+type APILoginListResponse struct {
+	Status    string
+	Message   string
+	LoginList []d.LoginInfo
+}
+
+func LogAndRespondListLogin(w http.ResponseWriter, status APIStatus, logins []d.LoginInfo, message string, args ...interface{}) {
+	fmt.Printf(message, args...)
+	fmt.Printf("\n")
+
+	r := APILoginListResponse{
+		Status:    string(status),
+		Message:   fmt.Sprintf(message, args...),
+		LoginList: logins,
+	}
+
+	bytes, _ := json.Marshal(&r)
+	fmt.Fprintf(w, string(bytes))
+}
+
 func getLoginInfo(email, password, token string) (d.User, error) {
 	if token != "" {
 		// Try token
@@ -212,13 +232,53 @@ func HandleCreateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// length 32 is default, override if 0 is provided
+	if info.Length == 0 {
+		info.Length = 32
+	}
+
+	// Length must be 64 characters max
+	if len(info.Name) > 64 {
+		LogAndRespond(w, StatusError, "Service name max length is 64 characters")
+		return
+	}
+
+	// If metadata is null, assume empty JSON object
+	if info.Metadata == "" {
+		info.Metadata = "{}"
+	}
+
+	// Error if not JSON
+	if !IsJSON(info.Metadata) {
+		LogAndRespond(w, StatusError, "metadata field is not valid JSON")
+		return
+	}
+
+	maxMetadataLength := 8192
+	if len(info.Metadata) > maxMetadataLength {
+		LogAndRespond(w, StatusError, "metadata field is too large, max is %d bytes", maxMetadataLength)
+		return
+	}
+
+	// Check valid algorithms
+	switch info.Algorithm {
+	case "sha256-str":
+	case "sha256-bin":
+	case "sha256-bin-alfanum":
+	case "":
+		info.Algorithm = "sha256-str"
+	default:
+		LogAndRespond(w, StatusError, "Invalid algorithm '%s'", info.Algorithm)
+		return
+	}
+
 	// Login info
 	user, err := getLoginInfo(info.Email, info.Password, info.Token)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
 	}
 
-	err, updated := d.CreateRuleForUser(db, user, info.Prefix, info.Suffix, info.Length, info.Name)
+	err, updated := d.CreateRuleForUser(db, user, info.Prefix, info.Suffix, info.Length, info.Name, info.Algorithm, info.Metadata)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
 		return
@@ -416,4 +476,65 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 
 		LogAndRespond(w, StatusOK, "Password reset successfully!")
 	}
+}
+
+func HandleLoginList(w http.ResponseWriter, r *http.Request) {
+	// Read and parse the body
+	var info models.APILoginList
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &info)
+	if err != nil {
+		LogAndRespond(w, StatusError, "Could not list logins: invalid json data")
+		return
+	}
+
+	// Login info
+	user, err := getLoginInfo(info.Email, info.Password, info.Token)
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
+	hashedToken := ""
+	if info.Token != "" {
+		h := sha256.Sum256([]byte(info.Token))
+		hashedToken = hex.EncodeToString(h[:])
+	}
+
+	list, _ := d.ListLogin(db, user.ID.Int64, hashedToken, info.All)
+
+	LogAndRespondListLogin(w, StatusOK, list, "Login list fetched successfully!")
+}
+
+func HandleLoginExpire(w http.ResponseWriter, r *http.Request) {
+	// Read and parse the body
+	var info models.APILoginExpire
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &info)
+	if err != nil {
+		LogAndRespond(w, StatusError, "Could not expire logins: invalid json data")
+		return
+	}
+
+	// Check required fields
+	if len(info.GUIDs) <= 0 {
+		LogAndRespond(w, StatusError, "No guids were provided")
+		return
+	}
+
+	// Login info
+	user, err := getLoginInfo(info.Email, info.Password, info.Token)
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
+	// Delete in the database
+	err = d.DeleteLoginTokens(db, user.ID.Int64, info.GUIDs)
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
+
+	LogAndRespond(w, StatusOK, "Deleted logins successfully!")
 }

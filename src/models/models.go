@@ -28,10 +28,12 @@ type APILogout struct {
 
 type APICreate struct {
 	APILoginInfo
-	Name   string `json:"name"`
-	Length int    `json:"length"`
-	Suffix string `json:"suffix"`
-	Prefix string `json:"prefix"`
+	Name      string `json:"name"`
+	Length    int    `json:"length"`
+	Suffix    string `json:"suffix"`
+	Prefix    string `json:"prefix"`
+	Metadata  string `json:"metadata"`
+	Algorithm string `json:"algorithm"`
 }
 
 type APIList struct {
@@ -48,4 +50,14 @@ type APIResetPassword struct {
 
 	Token       string `json:"token"`
 	NewPassword string `json:"newpassword"`
+}
+
+type APILoginList struct {
+	APILoginInfo
+	All bool `json:"all"`
+}
+
+type APILoginExpire struct {
+	APILoginInfo
+	GUIDs []string `json:"guids"`
 }

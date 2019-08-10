@@ -58,6 +58,8 @@ func main() {
 	http.HandleFunc("/logout", HandleMiddleware(HandleLogoutV2, CheckRequest))
 	http.HandleFunc("/deleteaccount", HandleMiddleware(HandleDeleteAccount, CheckRequest))
 	http.HandleFunc("/resetpassword", HandleMiddleware(HandleResetPassword, CheckRequest))
+	http.HandleFunc("/loginlist", HandleMiddleware(HandleLoginList, CheckRequest))
+	http.HandleFunc("/loginexpire", HandleMiddleware(HandleLoginExpire, CheckRequest))
 
 	// Ok, this is a joke
 	http.HandleFunc("/teapot", HandleTeapot)

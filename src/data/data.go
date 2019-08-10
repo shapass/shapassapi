@@ -13,11 +13,14 @@ import (
 )
 
 type ShaPassRule struct {
-	ID           int
-	Name         string
-	Length       int
-	Prefix       string
-	Suffix       string
+	ID        int
+	Name      string
+	Length    int
+	Prefix    string
+	Suffix    string
+	Algorithm string
+	Metadata  string `json:"Metadata,omitempty"`
+
 	UpdatedAt    time.Time `json:"-"`
 	UpdatedAtInt int64     `json:"-"`
 }
@@ -27,6 +30,14 @@ type User struct {
 	Email          sql.NullString
 	HashedPassword sql.NullString
 	LastLogin      sql.NullString
+}
+
+type LoginInfo struct {
+	GUID      string
+	CreatedAt int64
+	ExpireAt  int64
+	Expired   bool
+	Current   bool
 }
 
 func OpenDatabase(host string, port string, password string, database string) (*sql.DB, error) {
@@ -147,7 +158,7 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 	}
 
 	// Update last login
-	query = "UPDATE users SET last_login=$1 WHERE id=$2"
+	query = "UPDATE users SET last_login=$1, login_count=login_count+1 WHERE id=$2"
 	_, err = db.Exec(query, time.Now().UTC(), userID.Int64)
 	if err != nil {
 		fmt.Println(err)
@@ -190,7 +201,7 @@ func UserInfoFromEmail(db *sql.DB, email string) (User, error) {
 
 func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 	query := `
-		SELECT pattern.id, service_name, prefix_salt, suffix_salt, length, pattern.updated_at FROM pattern
+		SELECT pattern.id, service_name, prefix_salt, suffix_salt, length, pattern.updated_at, algorithm, metadata FROM pattern
 		INNER JOIN users ON user_id=users.id WHERE email=$1
 	`
 	rows, err := db.Query(query, email)
@@ -208,7 +219,9 @@ func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 		var suffix sql.NullString
 		var length sql.NullInt64
 		var updatedAt time.Time
-		err := rows.Scan(&patternID, &serviceName, &prefix, &suffix, &length, &updatedAt)
+		var algorithm sql.NullString
+		var metadata sql.NullString
+		err := rows.Scan(&patternID, &serviceName, &prefix, &suffix, &length, &updatedAt, &algorithm, &metadata)
 
 		if err != nil {
 			fmt.Println("Could not scan rows to fetch rule for user:", email)
@@ -219,6 +232,9 @@ func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 				Prefix:    prefix.String,
 				Suffix:    suffix.String,
 				Length:    int(length.Int64),
+				Algorithm: algorithm.String,
+				Metadata:  metadata.String,
+
 				UpdatedAt: updatedAt,
 			}
 
@@ -230,7 +246,8 @@ func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 }
 
 // Return true if the rule was updated, false otherwise
-func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, length int, name string) (error, bool) {
+// metadata must be valid JSON
+func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, length int, name string, algorithm string, metadata string) (error, bool) {
 	// Check if the rule already exists
 	query := `
 	SELECT users.id, a.service_name, email
@@ -259,9 +276,9 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 	if serviceName.Valid {
 		// Update rule
 		query = `UPDATE pattern 
-		SET length=$1, prefix_salt=$2, suffix_salt=$3
-		WHERE service_name=$4 AND user_id=$5`
-		_, err = db.Exec(query, length, prefix, suffix, name, id.Int64)
+		SET length=$1, prefix_salt=$2, suffix_salt=$3, algorithm=$4, metadata=$5
+		WHERE service_name=$6 AND user_id=$7`
+		_, err = db.Exec(query, length, prefix, suffix, algorithm, metadata, name, id.Int64)
 		if err != nil {
 			fmt.Printf("Could not create rule in the database: %v", err)
 			return fmt.Errorf("Could not update rule, service unavailable"), false
@@ -270,9 +287,9 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 	} else {
 		// If it doesn't, create it
 		query = `INSERT INTO pattern
-			(user_id, service_name, length, prefix_salt, suffix_salt)
-			VALUES ($1, $2, $3, $4, $5)`
-		_, err = db.Exec(query, id.Int64, name, length, prefix, suffix)
+			(user_id, service_name, length, prefix_salt, suffix_salt, algorithm, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		_, err = db.Exec(query, id.Int64, name, length, prefix, suffix, algorithm, metadata)
 
 		if err != nil {
 			fmt.Printf("Could not create rule in the database: %v", err)
@@ -515,6 +532,86 @@ func ResetPassword(db *sql.DB, newPassword string, email string, hashedToken str
 	}
 	if rowsAffected != 1 {
 		return fmt.Errorf("Could not reset password, invalid token for email")
+	}
+
+	return nil
+}
+
+// ListLogin returns information on all logins made by the userID specified
+//
+// - 'currentHashedToken' is compared with every token and when a match is found, the field
+//   Current in the login info is set to indicate that login as the currently used in this API call.
+//
+// - 'returnExpired' if set causes all logins to be returned, even when expired, otherwise
+//   expired logins are not included in the response.
+//
+func ListLogin(db *sql.DB, userID int64, currentHashedToken string, returnExpired bool) ([]LoginInfo, error) {
+	query := `
+	SELECT guid, created_at, expire_at, login_token
+	FROM login
+	WHERE user_id=$1
+	`
+	rows, err := db.Query(query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("Could not find logins in the database")
+	}
+
+	var list []LoginInfo
+
+	for rows.Next() {
+		var l LoginInfo
+
+		var createdAt time.Time
+		var guid sql.NullString
+		var expireAt time.Time
+		var token sql.NullString
+		err := rows.Scan(&guid, &createdAt, &expireAt, &token)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			expired := expireAt.Before(time.Now().UTC())
+
+			l.CreatedAt = createdAt.UnixNano() / 1000000
+			l.ExpireAt = expireAt.UnixNano() / 1000000
+			l.Expired = expired
+			l.GUID = guid.String
+
+			if currentHashedToken == token.String {
+				l.Current = true
+			}
+
+			if returnExpired || !expired {
+				list = append(list, l)
+			}
+		}
+	}
+	return list, nil
+}
+
+func DeleteLoginTokens(db *sql.DB, userID int64, guids []string) error {
+	if len(guids) <= 0 {
+		return fmt.Errorf("No logins were expired")
+	}
+	query := "DELETE FROM login WHERE user_id = $1 AND guid IN ("
+
+	var args []interface{}
+	args = append(args, userID)
+
+	for i, g := range guids {
+		if i > 0 {
+			query += ", "
+		}
+		query += fmt.Sprintf("$%d", i+2) // start at 2 since email is the 1st argument
+		args = append(args, g)
+	}
+
+	query += ")"
+
+	_, err := db.Exec(query, args...)
+
+	if err != nil {
+		fmt.Println("Could not expire logins, unexpected error:", err)
+		return fmt.Errorf("Could not expire logins, unexpected error")
 	}
 
 	return nil

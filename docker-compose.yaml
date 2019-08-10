@@ -11,7 +11,7 @@ services:
   postgres:
     image: hoshoyo/shapass-db
     ports:
-      - "5432:5432"
+      - "5555:5432"
     networks:
       - shapass-net-dev
     environment:
