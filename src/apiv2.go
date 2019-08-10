@@ -264,7 +264,7 @@ func HandleCreateV2(w http.ResponseWriter, r *http.Request) {
 	switch info.Algorithm {
 	case "sha256-str":
 	case "sha256-bin":
-	case "sha256-bin-alfanum":
+	case "sha256-bin-alphanum":
 	case "":
 		info.Algorithm = "sha256-str"
 	default:
