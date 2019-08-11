@@ -492,6 +492,17 @@ func DeleteAllRulesFromUser(db *sql.DB, userID int64) error {
 	return nil
 }
 
+func DeleteAllLoginsFromUser(db *sql.DB, userID int64) error {
+	query := "DELETE FROM login WHERE user_id=$1"
+
+	_, err := db.Exec(query, userID)
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func DeleteUser(db *sql.DB, userID int64) error {
 	query := "DELETE FROM users WHERE id=$1"
 	_, err := db.Exec(query, userID)

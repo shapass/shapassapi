@@ -449,12 +449,21 @@ func HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		LogAndRespond(w, StatusError, "Could not delete account, unexpected error occurred")
 		fmt.Println(err)
+		return
+	}
+
+	err = d.DeleteAllLoginsFromUser(db, user.ID.Int64)
+	if err != nil {
+		LogAndRespond(w, StatusError, "Could not delete account, unexpected error occurred")
+		fmt.Println(err)
+		return
 	}
 
 	err = d.DeleteUser(db, user.ID.Int64)
 	if err != nil {
 		LogAndRespond(w, StatusError, "Could not delete account, unexpected error occurred")
 		fmt.Println(err)
+		return
 	}
 
 	LogAndRespond(w, StatusOK, "Deleted user '%s' successfully!", user.Email.String)
@@ -553,7 +562,11 @@ func HandleLoginList(w http.ResponseWriter, r *http.Request) {
 		hashedToken = hex.EncodeToString(h[:])
 	}
 
-	list, _ := d.ListLogin(db, user.ID.Int64, hashedToken, info.All)
+	list, err := d.ListLogin(db, user.ID.Int64, hashedToken, info.All)
+	if err != nil {
+		LogAndRespond(w, StatusError, "%v", err)
+		return
+	}
 
 	LogAndRespondListLogin(w, StatusOK, list, "Login list fetched successfully!")
 }
