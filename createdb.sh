@@ -15,6 +15,7 @@ psql -v ON_ERROR_STOP=1 --username admin --dbname shapassapi <<-EOSQL
         password VARCHAR(255),
         password_reset_token VARCHAR(255),
         last_password_reset_time TIMESTAMP,
+        activated BOOLEAN DEFAULT FALSE,
         last_login TIMESTAMP,
         login_count INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW(),

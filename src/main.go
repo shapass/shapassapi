@@ -18,6 +18,7 @@ func HandleTeapot(w http.ResponseWriter, r *http.Request) {
 var globalEmail string
 var globalEmailPassword string
 var globalShapassResetLink string
+var globalShapassSignupPath string
 
 func main() {
 	dbport := os.Getenv("SHAPASS_DATABASE_PORT")
@@ -47,8 +48,10 @@ func main() {
 
 	globalEmailPassword = os.Getenv("ZOHO_SHAPASS_EMAIL_PASSWORD")
 	globalEmail = os.Getenv("ZOHO_SHAPASS_EMAIL")
-	globalShapassResetLink = "https://shapass.com/shapass/reset"
+	globalShapassResetLink = "https://shapass.com/reset"
+	globalShapassSignupPath = "https://shapass.com/api/confirmation"
 
+	http.HandleFunc("/confirmation", HandleSignUpConfirmation)
 	http.HandleFunc("/signup", HandleMiddleware(HandleSignUpV2, CheckRequest))
 	http.HandleFunc("/login", HandleMiddleware(HandleLoginV2, CheckRequest))
 	http.HandleFunc("/list", HandleMiddleware(HandleListV2, CheckRequest))

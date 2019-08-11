@@ -102,7 +102,11 @@ func getLoginInfo(email, password, token string) (d.User, error) {
 	if token != "" {
 		// Try token
 		hashedToken := sha256.Sum256([]byte(token))
-		return d.UserInfoFromToken(db, hex.EncodeToString(hashedToken[:]))
+		user, err := d.UserInfoFromToken(db, hex.EncodeToString(hashedToken[:]))
+		if err == nil && !user.Activated.Bool {
+			return d.User{}, fmt.Errorf("User not activated")
+		}
+		return user, err
 	} else if email != "" && password != "" {
 		// Try with email and password
 		user, err := d.UserInfoFromEmail(db, email)
@@ -113,10 +117,36 @@ func getLoginInfo(email, password, token string) (d.User, error) {
 		if bcrypt.CompareHashAndPassword([]byte(user.HashedPassword.String), []byte(password)) != nil {
 			return d.User{}, fmt.Errorf("Incorrect password")
 		}
+
+		if !user.Activated.Bool {
+			return d.User{}, fmt.Errorf("User not activated")
+		}
 		return user, nil
 	} else {
 		return d.User{}, fmt.Errorf("Not logged in")
 	}
+}
+
+func HandleSignUpConfirmation(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	email := r.Form.Get("email")
+	token := r.Form.Get("token")
+
+	if email == "" || token == "" {
+		LogAndRespond(w, StatusError, "Could not confirm signup, email and token are required")
+		return
+	}
+
+	t := sha256.Sum256([]byte(token))
+	hashedToken := hex.EncodeToString(t[:])
+
+	err := d.ActivateUser(db, email, hashedToken)
+	if err != nil {
+		LogAndRespond(w, StatusError, "Could not confirm signup: %v", err)
+		return
+	}
+
+	LogAndRespond(w, StatusOK, "User '%s' activated successfully!", email)
 }
 
 // HandleSignUpV2 does the signing up process, only if the email provided
@@ -143,14 +173,36 @@ func HandleSignUpV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register user in the database
-	err = d.CreateUser(db, info.Email, info.Password)
+	// First stage, send token to the user email
+	signupToken, err := GenerateRandomString(64)
+	if err != nil {
+		LogAndRespond(w, StatusError, "Signup failed: unexpected error")
+		return
+	}
+	token := sha256.Sum256([]byte(signupToken))
+	hashedToken := hex.EncodeToString(token[:])
+
+	// Register user in the database, not activated
+	err = d.CreateUser(db, info.Email, info.Password, hashedToken)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
 		return
 	}
 
-	LogAndRespond(w, StatusOK, "User '%s' signed up successfully!", info.Email)
+	// Registered successfully, send email
+	msg := fmt.Sprintf("To confirm your account please click the link: %s?email=%s&token=%s", globalShapassSignupPath, info.Email, signupToken)
+	//err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Sign up to shapass", msg)
+
+	fmt.Println(msg)
+	fmt.Printf("User '%s' signed up! Email sent\n", info.Email)
+
+	if err != nil {
+		fmt.Printf("We could not sign signup email for user '%s': %v\n", info.Email, err)
+		LogAndRespond(w, StatusError, "We could not send signup email, try again later")
+		return
+	}
+
+	LogAndRespond(w, StatusOK, "Sent confirmation email to '%s' successfully!", info.Email)
 }
 
 func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +328,7 @@ func HandleCreateV2(w http.ResponseWriter, r *http.Request) {
 	user, err := getLoginInfo(info.Email, info.Password, info.Token)
 	if err != nil {
 		LogAndRespond(w, StatusError, "%v", err)
+		return
 	}
 
 	err, updated := d.CreateRuleForUser(db, user, info.Prefix, info.Suffix, info.Length, info.Name, info.Algorithm, info.Metadata)

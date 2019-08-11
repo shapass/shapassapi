@@ -1,5 +1,8 @@
 run-dev:
-	go run src/*.go
+	./start_dev.sh
+
+run-prod: build
+	./start.sh
 
 docker-run:
 	docker-compose up

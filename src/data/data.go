@@ -30,6 +30,7 @@ type User struct {
 	Email          sql.NullString
 	HashedPassword sql.NullString
 	LastLogin      sql.NullString
+	Activated      sql.NullBool
 }
 
 type LoginInfo struct {
@@ -61,17 +62,39 @@ func OpenDatabase(host string, port string, password string, database string) (*
 	return db, nil
 }
 
-func CreateUser(db *sql.DB, email string, password string) error {
-	query := "INSERT INTO users (password, email) VALUES ($1, $2)"
+func ActivateUser(db *sql.DB, email string, token string) error {
+	row := db.QueryRow("SELECT id FROM users WHERE email = $1 AND password_reset_token = $2 AND activated = FALSE", email, token)
+	var userID sql.NullInt64
+	err := row.Scan(&userID)
+
+	if err != nil || !userID.Valid {
+		return fmt.Errorf("Invalid signup token or user already activated")
+	}
+
+	query := "UPDATE users SET activated = TRUE, password_reset_token = NULL WHERE id = $1"
+
+	_, err = db.Exec(query, userID.Int64)
+
+	if err != nil {
+		fmt.Printf("Could not activate user %s in the database: %v\n", email, err)
+		return fmt.Errorf("Could not activate user %s in the database, unexpected error", email)
+	}
+	return nil
+}
+
+func CreateUser(db *sql.DB, email string, password string, token string) error {
+	query := "INSERT INTO users (password, email, password_reset_token, activated) VALUES ($1, $2, $3, FALSE)"
 
 	pw, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
-		return fmt.Errorf("Could not create user %s in the database %v", email, err)
+		fmt.Printf("Could not create user %s in the database: %v", email, err)
+		return fmt.Errorf("Could not create user %s in the database, unexpected error", email)
 	}
-	_, err = db.Exec(query, pw, email)
+	_, err = db.Exec(query, pw, email, token)
 
 	if err != nil {
-		return fmt.Errorf("Could not create user %s in the database: %v", email, err)
+		fmt.Printf("Could not create user %s in the database: %v\n", email, err)
+		return fmt.Errorf("Could not create user %s in the database, unexpected error", email)
 	}
 	return nil
 }
@@ -131,14 +154,20 @@ func PasswordMatches(db *sql.DB, email string, password string) (bool, error) {
 }
 
 func Login(db *sql.DB, email string, password string, token string) (bool, error) {
-	query := "SELECT id, password FROM users WHERE email=$1"
+	query := "SELECT id, password, activated FROM users WHERE email=$1"
 	row := db.QueryRow(query, email)
 
 	var pw sql.NullString
 	var userID sql.NullInt64
-	err := row.Scan(&userID, &pw)
+	var activated sql.NullBool
+	err := row.Scan(&userID, &pw, &activated)
+
 	if err != nil || !pw.Valid {
 		return false, fmt.Errorf("User '%s' does not exist", email)
+	}
+
+	if !activated.Bool {
+		return false, fmt.Errorf("User '%s' is not activated", email)
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(pw.String), []byte(password)) != nil {
@@ -169,14 +198,14 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 
 func UserInfoFromToken(db *sql.DB, token string) (User, error) {
 	query := `
-	SELECT users.id, users.email, users.password, users.last_login
+	SELECT users.id, users.email, users.password, users.last_login, users.activated
 	FROM login INNER JOIN users ON users.id=login.user_id
 	WHERE login.login_token=$1 AND expire_at > $2`
 
 	row := db.QueryRow(query, token, time.Now().UTC())
 
 	var user User
-	err := row.Scan(&user.ID, &user.Email, &user.HashedPassword, &user.LastLogin)
+	err := row.Scan(&user.ID, &user.Email, &user.HashedPassword, &user.LastLogin, &user.Activated)
 	if err != nil {
 		return User{}, fmt.Errorf("Not logged in")
 	}
@@ -186,13 +215,13 @@ func UserInfoFromToken(db *sql.DB, token string) (User, error) {
 
 func UserInfoFromEmail(db *sql.DB, email string) (User, error) {
 	query := `
-	SELECT users.id, users.email, users.password, users.last_login
+	SELECT users.id, users.email, users.password, users.last_login, users.activated
 	FROM users WHERE email=$1`
 
 	row := db.QueryRow(query, email)
 
 	var user User
-	err := row.Scan(&user.ID, &user.Email, &user.HashedPassword, &user.LastLogin)
+	err := row.Scan(&user.ID, &user.Email, &user.HashedPassword, &user.LastLogin, &user.Activated)
 	if err != nil {
 		return User{}, fmt.Errorf("User does not exist")
 	}
@@ -473,17 +502,22 @@ func DeleteUser(db *sql.DB, userID int64) error {
 }
 
 func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) error {
-	query := "SELECT id, last_password_reset_time FROM users WHERE email=$1"
+	query := "SELECT id, last_password_reset_time, activated FROM users WHERE email=$1"
 
 	row := db.QueryRow(query, email)
 
 	var userID sql.NullInt64
 	var lastPwResetTime sql.NullString
+	var activated sql.NullBool
 
-	err := row.Scan(&userID, &lastPwResetTime)
+	err := row.Scan(&userID, &lastPwResetTime, &activated)
 	if err != nil {
 		fmt.Println(err)
 		return fmt.Errorf("User does not exist")
+	}
+
+	if !activated.Bool {
+		return fmt.Errorf("User not activated")
 	}
 
 	if lastPwResetTime.Valid {
