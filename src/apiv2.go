@@ -191,9 +191,8 @@ func HandleSignUpV2(w http.ResponseWriter, r *http.Request) {
 
 	// Registered successfully, send email
 	msg := fmt.Sprintf("To confirm your account please click the link: %s?email=%s&token=%s", globalShapassSignupPath, info.Email, signupToken)
-	//err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Sign up to shapass", msg)
+	err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Sign up to shapass", msg)
 
-	fmt.Println(msg)
 	fmt.Printf("User '%s' signed up! Email sent\n", info.Email)
 
 	if err != nil {
