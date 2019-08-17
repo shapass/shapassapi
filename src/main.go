@@ -26,6 +26,18 @@ func main() {
 	dbpass := os.Getenv("SHAPASS_DATABASE_PASSWORD")
 	dbname := os.Getenv("SHAPASS_DATABASE_NAME")
 
+	globalEmailPassword = os.Getenv("ZOHO_SHAPASS_EMAIL_PASSWORD")
+	globalEmail = os.Getenv("ZOHO_SHAPASS_EMAIL")
+	globalShapassResetLink = os.Getenv("SHAPASS_RESET_PASSWORD_PATH")
+	globalShapassSignupPath = os.Getenv("SHAPASS_SIGNUP_CONFIRMATION_PATH")
+
+	if globalShapassResetLink == "" {
+		globalShapassResetLink = "https://shapass.com/#/reset-password"
+	}
+	if globalShapassSignupPath == "" {
+		globalShapassSignupPath = "https://shapass.com/api/confirmation"
+	}
+
 	if dbport == "" {
 		dbport = "5432"
 	}
@@ -45,11 +57,6 @@ func main() {
 		os.Exit(1)
 	}
 	go data.CheckDatabase(db)
-
-	globalEmailPassword = os.Getenv("ZOHO_SHAPASS_EMAIL_PASSWORD")
-	globalEmail = os.Getenv("ZOHO_SHAPASS_EMAIL")
-	globalShapassResetLink = "https://shapass.com/reset"
-	globalShapassSignupPath = "https://shapass.com/api/confirmation"
 
 	http.HandleFunc("/confirmation", HandleSignUpConfirmation)
 	http.HandleFunc("/signup", HandleMiddleware(HandleSignUpV2, CheckRequest))
