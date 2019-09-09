@@ -10,6 +10,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	_ "github.com/lib/pq" // needed to start the postgres driver
+
+	"../models"
 )
 
 type ShaPassRule struct {
@@ -62,13 +64,13 @@ func OpenDatabase(host string, port string, password string, database string) (*
 	return db, nil
 }
 
-func ActivateUser(db *sql.DB, email string, token string) error {
+func ActivateUser(db *sql.DB, email string, token string) (error, models.ErrorCode) {
 	row := db.QueryRow("SELECT id FROM users WHERE email = $1 AND password_reset_token = $2 AND activated = FALSE", email, token)
 	var userID sql.NullInt64
 	err := row.Scan(&userID)
 
 	if err != nil || !userID.Valid {
-		return fmt.Errorf("Invalid signup token or user already activated")
+		return fmt.Errorf("Invalid signup token or user already activated"), models.CodeInvalidToken
 	}
 
 	query := "UPDATE users SET activated = TRUE, password_reset_token = NULL WHERE id = $1"
@@ -76,27 +78,26 @@ func ActivateUser(db *sql.DB, email string, token string) error {
 	_, err = db.Exec(query, userID.Int64)
 
 	if err != nil {
-		fmt.Printf("Could not activate user %s in the database: %v\n", email, err)
-		return fmt.Errorf("Could not activate user %s in the database, unexpected error", email)
+		return err, models.CodeInternalError
 	}
-	return nil
+	return nil, models.CodeOK
 }
 
-func CreateUser(db *sql.DB, email string, password string, token string) error {
+func CreateUser(db *sql.DB, email string, password string, token string) (error, models.ErrorCode) {
 	query := "INSERT INTO users (password, email, password_reset_token, activated) VALUES ($1, $2, $3, FALSE)"
 
 	pw, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
 		fmt.Printf("Could not create user %s in the database: %v", email, err)
-		return fmt.Errorf("Could not create user %s in the database, unexpected error", email)
+		return fmt.Errorf("Could not create user %s in the database, unexpected error", email), models.CodeInternalError
 	}
 	_, err = db.Exec(query, pw, email, token)
 
 	if err != nil {
 		fmt.Printf("Could not create user %s in the database: %v\n", email, err)
-		return fmt.Errorf("Could not create user %s in the database, unexpected error", email)
+		return fmt.Errorf("Could not create user %s in the database, unexpected error", email), models.CodeInternalError
 	}
-	return nil
+	return nil, models.CodeOK
 }
 
 func UserExists(db *sql.DB, email string) bool {
@@ -153,7 +154,7 @@ func PasswordMatches(db *sql.DB, email string, password string) (bool, error) {
 	return true, nil
 }
 
-func Login(db *sql.DB, email string, password string, token string) (bool, error) {
+func Login(db *sql.DB, email string, password string, token string) (bool, error, models.ErrorCode) {
 	query := "SELECT id, password, activated FROM users WHERE email=$1"
 	row := db.QueryRow(query, email)
 
@@ -163,15 +164,15 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 	err := row.Scan(&userID, &pw, &activated)
 
 	if err != nil || !pw.Valid {
-		return false, fmt.Errorf("User '%s' does not exist", email)
+		return false, fmt.Errorf("User '%s' does not exist", email), models.CodeUserDoesNotExist
 	}
 
 	if !activated.Bool {
-		return false, fmt.Errorf("User '%s' is not activated", email)
+		return false, fmt.Errorf("User '%s' is not activated", email), models.CodeUserNotActivated
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(pw.String), []byte(password)) != nil {
-		return false, fmt.Errorf("Incorrect password")
+		return false, fmt.Errorf("Incorrect password"), models.CodeIncorrectLoginInfo
 	}
 
 	// Create a login
@@ -183,7 +184,7 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 	// Set token which is already hashed by the caller
 	_, err = db.Exec(query, userID.Int64, token, expire)
 	if err != nil {
-		return false, fmt.Errorf("Could not login, service unavailable")
+		return false, fmt.Errorf("Could not login, service unavailable"), models.CodeInternalError
 	}
 
 	// Update last login
@@ -193,7 +194,7 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 		fmt.Println(err)
 	}
 
-	return true, nil
+	return true, nil, models.CodeOK
 }
 
 func UserInfoFromToken(db *sql.DB, token string) (User, error) {
@@ -276,7 +277,7 @@ func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 
 // Return true if the rule was updated, false otherwise
 // metadata must be valid JSON
-func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, length int, name string, algorithm string, metadata string) (error, bool) {
+func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, length int, name string, algorithm string, metadata string) (error, bool, models.ErrorCode) {
 	// Check if the rule already exists
 	query := `
 	SELECT users.id, a.service_name, email
@@ -299,7 +300,7 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 
 	err := row.Scan(&id, &serviceName, &userEmail)
 	if err != nil {
-		return fmt.Errorf("Could not find user in the database: %v %s, %s", err, name, user.Email.String), false
+		return fmt.Errorf("Could not find user in the database: %v %s, %s", err, name, user.Email.String), false, models.CodeUserDoesNotExist
 	}
 
 	if serviceName.Valid {
@@ -310,9 +311,9 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 		_, err = db.Exec(query, length, prefix, suffix, algorithm, metadata, name, id.Int64)
 		if err != nil {
 			fmt.Printf("Could not create rule in the database: %v", err)
-			return fmt.Errorf("Could not update rule, service unavailable"), false
+			return fmt.Errorf("Could not update rule, service unavailable"), false, models.CodeInternalError
 		}
-		return nil, true
+		return nil, true, models.CodeOK
 	} else {
 		// If it doesn't, create it
 		query = `INSERT INTO pattern
@@ -322,13 +323,13 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 
 		if err != nil {
 			fmt.Printf("Could not create rule in the database: %v", err)
-			return fmt.Errorf("Could not create rule, service unavailable"), false
+			return fmt.Errorf("Could not create rule, service unavailable"), false, models.CodeInternalError
 		}
-		return nil, false
+		return nil, false, models.CodeOK
 	}
 }
 
-func DeleteRule(db *sql.DB, email string, svc string) error {
+func DeleteRule(db *sql.DB, email string, svc string) (error, models.ErrorCode) {
 	// Check if the rule exists
 	query := `
 	SELECT users.id, a.service_name, email
@@ -350,21 +351,21 @@ func DeleteRule(db *sql.DB, email string, svc string) error {
 
 	err := row.Scan(&id, &serviceName, &userEmail)
 	if err != nil {
-		return fmt.Errorf("Could not find user in the database")
+		return fmt.Errorf("Could not find user in the database"), models.CodeUserDoesNotExist
 	}
 
 	if !serviceName.Valid {
-		return fmt.Errorf("Service rule does not exist")
+		return fmt.Errorf("Service rule does not exist"), models.CodeRuleDoesNotExist
 	}
 
 	query = "DELETE FROM pattern WHERE service_name=$1 AND user_id=$2"
 	_, err = db.Exec(query, svc, id.Int64)
 
 	if err != nil {
-		return fmt.Errorf("Could not delete service")
+		return fmt.Errorf("Could not delete service"), models.CodeInternalError
 	}
 
-	return nil
+	return nil, models.CodeOK
 }
 
 func LogoutToken(db *sql.DB, hashedToken string) error {
@@ -512,7 +513,7 @@ func DeleteUser(db *sql.DB, userID int64) error {
 	return nil
 }
 
-func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) error {
+func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) (error, models.ErrorCode) {
 	query := "SELECT id, last_password_reset_time, activated FROM users WHERE email=$1"
 
 	row := db.QueryRow(query, email)
@@ -524,11 +525,11 @@ func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) error 
 	err := row.Scan(&userID, &lastPwResetTime, &activated)
 	if err != nil {
 		fmt.Println(err)
-		return fmt.Errorf("User does not exist")
+		return fmt.Errorf("User does not exist"), models.CodeUserDoesNotExist
 	}
 
 	if !activated.Bool {
-		return fmt.Errorf("User not activated")
+		return fmt.Errorf("User not activated"), models.CodeUserNotActivated
 	}
 
 	if lastPwResetTime.Valid {
@@ -537,7 +538,7 @@ func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) error 
 		t, err := time.Parse(time.RFC3339, lastPwResetTime.String)
 		if err != nil {
 			fmt.Println("Could not parse timestamp: ", err)
-			return fmt.Errorf("Cannot reset password, unexpected error")
+			return fmt.Errorf("Cannot reset password, unexpected error"), models.CodeInternalError
 		}
 
 		duration := time.Minute * 30
@@ -545,7 +546,7 @@ func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) error 
 
 		if !timeAllow {
 			// Cannot reset password yet
-			return fmt.Errorf("Can only reset password every 30min, (elapsed: %v)", time.Now().UTC().Sub(t))
+			return fmt.Errorf("Can only reset password every 30min, (elapsed: %v)", time.Now().UTC().Sub(t)), models.CodeResetPasswordDelay
 		}
 	}
 
@@ -556,14 +557,13 @@ func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) error 
 	WHERE id=$3`
 	_, err = db.Exec(query, time.Now().UTC(), hashedToken, userID.Int64)
 	if err != nil {
-		fmt.Println("Could not reset password, unexpected error: ", err)
-		return fmt.Errorf("Could not reset password, unexpected error")
+		return fmt.Errorf("Could not reset password, unexpected error"), models.CodeInternalError
 	}
 
-	return nil
+	return nil, models.CodeOK
 }
 
-func ResetPassword(db *sql.DB, newPassword string, email string, hashedToken string) error {
+func ResetPassword(db *sql.DB, newPassword string, email string, hashedToken string) (error, models.ErrorCode) {
 	query := `
 	UPDATE users 
 	SET password=$1, last_password_reset_time=$2, password_reset_token=NULL
@@ -573,13 +573,13 @@ func ResetPassword(db *sql.DB, newPassword string, email string, hashedToken str
 	rowsAffected, _ := res.RowsAffected()
 
 	if err != nil {
-		return fmt.Errorf("Could not reset password, unexpected error")
+		return fmt.Errorf("Could not reset password, unexpected error"), models.CodeInternalError
 	}
 	if rowsAffected != 1 {
-		return fmt.Errorf("Could not reset password, invalid token for email")
+		return fmt.Errorf("Could not reset password, invalid token for email"), models.CodeInvalidToken
 	}
 
-	return nil
+	return nil, models.CodeOK
 }
 
 // ListLogin returns information on all logins made by the userID specified
@@ -598,7 +598,7 @@ func ListLogin(db *sql.DB, userID int64, currentHashedToken string, returnExpire
 	`
 	rows, err := db.Query(query, userID)
 	if err != nil {
-		return nil, fmt.Errorf("Could not find logins in the database")
+		return nil, nil
 	}
 
 	var list []LoginInfo

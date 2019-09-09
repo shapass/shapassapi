@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+
+	"./models"
 )
 
 func allowCORS(w http.ResponseWriter) {
@@ -26,7 +28,7 @@ func CheckRequest(w http.ResponseWriter, r *http.Request) bool {
 	// Allow only POST requests
 	err := allowOnlyPOST(r, r.URL.Path)
 	if err != nil {
-		LogAndRespond(w, StatusError, "%v", err)
+		LogAndRespond(w, StatusError, models.CodeInvalidMethod, "%v", err)
 		return false
 	}
 

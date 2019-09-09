@@ -61,3 +61,24 @@ type APILoginExpire struct {
 	APILoginInfo
 	GUIDs []string `json:"guids"`
 }
+
+// Error Codes
+
+type ErrorCode int
+
+const (
+	CodeOK = iota
+	CodeInternalError
+	CodeNotLoggedIn
+	CodeIncorrectLoginInfo
+	CodeIncorrectSignupInfo
+	CodeUserNotActivated
+	CodeUserDoesNotExist
+	CodeRuleDoesNotExist
+	CodeInvalidInput
+	CodeInvalidToken // Invalid signup/logout token
+	CodeCouldNotSendEmail
+	CodeInvalidAlgorithm
+	CodeResetPasswordDelay
+	CodeInvalidMethod
+)
