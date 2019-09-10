@@ -156,3 +156,68 @@ All the logins passed to this API call will be deleted.
     "guids": ["guid-for-login1", "guid-for-login2"]
 }
 ```
+
+## Error Codes
+
+The API returns the following error codes
+
+```go
+    // No errors occurred
+    0  => CodeOK
+
+    // An unknown error occurred (database issue mostly)
+    1  => CodeInternalError
+
+    // The API call requires the user to be logged in and
+    // the user is not.
+    2  => CodeNotLoggedIn
+
+    // Incorrect information for login was provided.
+    3  => CodeIncorrectLoginInfo
+
+    // Some of the fields required for signup were not
+    // provided
+    4  => CodeIncorrectSignupInfo
+
+    // The API call requires an activated user, but
+    // the user info provided is from a user not yet
+    // confirmed by email.
+    // This error code should probably not be external.
+    5  => CodeUserNotActivated
+
+    // User does not exist in the database.
+    // This should never be raised, since the user
+    // must be logged in already for an API call
+    // to try to access data from them.
+    6  => CodeUserDoesNotExist
+
+    // This error is raised when trying to delete a rule 
+    // that doesn't exist.
+    7  => CodeRuleDoesNotExist
+
+    // This error is raised if the JSON input is not
+    // valid JSON, or when not all fields required for
+    // the called API call were provided.
+    8  => CodeInvalidInput
+
+    // This error is raised when the token provided
+    // for the API call is not valid.
+    9  => CodeInvalidToken
+
+    // This error is raised when the email service
+    // failed to send an email. User must try later.
+    10 => CodeCouldNotSendEmail
+
+    // An invalid algorithm was sent (i.e. sha233-bin)
+    11 => CodeInvalidAlgorithm
+
+    // The password recovery system can only be
+    // issued again after some time (30m by default).
+    // This error is caused by trying to reset the
+    // password again before this period.
+    12 => CodeResetPasswordDelay
+
+    // An API request was received with a method
+    // different from POST.
+    13 => CodeInvalidMethod
+```
