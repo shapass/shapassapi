@@ -15,8 +15,15 @@ docker-build-db:
 docker-build-api:
 	docker build -t hoshoyo/shapass:latest -f Dockerfile.api .
 
+install: build
+	sudo cp shapassapi /usr/bin/shapassapi
+	sudo cp shapassapi.service /lib/systemd/system/shapassapi.service
+	sudo cp .env /etc/default/shapassenv
+	sudo systemctl enable shapassapi
+	sudo systemctl daemon-reload
+
 build:
-	go build src/*.go
+	go build -o shapassapi src/*.go
 
 rundb-dev:
 	docker run --rm -ti -p 5555:5432 hoshoyo/shapass-db:latest

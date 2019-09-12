@@ -6,9 +6,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
     CREATE DATABASE shapassapi;
     GRANT ALL PRIVILEGES ON DATABASE shapassapi TO admin;
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-EOSQL
 
-psql -v ON_ERROR_STOP=1 --username admin --dbname shapassapi <<-EOSQL
     CREATE TABLE users(
         id serial PRIMARY KEY,
         email VARCHAR(128),

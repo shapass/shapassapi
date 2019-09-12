@@ -1,0 +1,11 @@
+[Unit]
+Description=API for shapass
+
+[Service]
+Type=simple
+Restart=always
+EnvironmentFile=/etc/default/shapassenv
+ExecStart=/usr/bin/shapassapi
+
+[Install]
+WantedBy=multi-user.target
