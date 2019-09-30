@@ -178,8 +178,8 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 	// Create a login
 	query = "INSERT INTO login (user_id, login_token, expire_at) VALUES ($1, $2, $3)"
 
-	// Expire time 1 week
-	expire := time.Now().UTC().Add(time.Hour * 24 * 7)
+	// Expire time 3 months (roughly)
+	expire := time.Now().UTC().Add(time.Hour * 24 * 90)
 
 	// Set token which is already hashed by the caller
 	_, err = db.Exec(query, userID.Int64, token, expire)
