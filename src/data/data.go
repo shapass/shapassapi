@@ -275,6 +275,38 @@ func RulesList(db *sql.DB, email string) ([]ShaPassRule, error) {
 	return rules, nil
 }
 
+func SaveEncryptedData(db *sql.DB, user User, data string) (error, bool, models.ErrorCode) {
+	query := `
+	UPDATE users SET encrypted_data = $1
+	WHERE id=$2
+	`
+
+	_, err := db.Exec(query, data, user.ID.Int64)
+
+	if err != nil {
+		return fmt.Errorf("Could not update user encrypted data: %v", err), false, models.CodeInternalError
+	}
+
+	return nil, true, models.CodeOK
+}
+
+func LoadEncryptedData(db *sql.DB, user User) (error, string, models.ErrorCode) {
+	query := `
+	SELECT encrypted_data FROM users WHERE id=$1
+	`
+
+	row := db.QueryRow(query, user.ID.Int64)
+
+	var data sql.NullString
+	err := row.Scan(&data)
+
+	if err != nil {
+		return fmt.Errorf("Could not load user encrypted data: %v", err), "", models.CodeInternalError
+	}
+
+	return nil, data.String, models.CodeOK
+}
+
 // Return true if the rule was updated, false otherwise
 // metadata must be valid JSON
 func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, length int, name string, algorithm string, metadata string) (error, bool, models.ErrorCode) {
