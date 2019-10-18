@@ -21,6 +21,10 @@ install: build
 	sudo cp .env /etc/default/shapassenv
 	sudo systemctl enable shapassapi
 	sudo systemctl daemon-reload
+reload:
+	sudo systemctl stop shapassapi
+	sudo cp shapassapi /usr/bin/shapassapi
+	sudo systemctl start shapassapi
 
 build:
 	go build -o shapassapi src/*.go

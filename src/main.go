@@ -51,6 +51,8 @@ func main() {
 		dbname = "shapassapi"
 	}
 
+	fmt.Printf("Email configured: %s with password: %s", globalEmail, globalEmailPassword)
+
 	var err error
 	db, err = data.OpenDatabase(dbhost, dbport, dbpass, dbname)
 	if err != nil {
