@@ -5,8 +5,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
     CREATE USER admin WITH SUPERUSER PASSWORD 'postgres';
     CREATE DATABASE shapassapi;
     GRANT ALL PRIVILEGES ON DATABASE shapassapi TO admin;
-    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+EOSQL
 
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" -d shapassapi <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    
     CREATE TABLE users(
         id serial PRIMARY KEY,
         email VARCHAR(128),
@@ -17,7 +20,8 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
         last_login TIMESTAMP,
         login_count INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        updated_at TIMESTAMP DEFAULT NOW(),
+        encrypted_data VARCHAR
     );
 
     CREATE TABLE pattern(

@@ -104,6 +104,26 @@ func LogAndRespondListLogin(w http.ResponseWriter, status APIStatus, code models
 	fmt.Fprintf(w, string(bytes))
 }
 
+type APILoadResponse struct {
+	Status        string
+	Message       string
+	EncryptedData string
+}
+
+func LogAndRespondLoad(w http.ResponseWriter, status APIStatus, code models.ErrorCode, encryptedData, message string, args ...interface{}) {
+	fmt.Printf(message, args...)
+	fmt.Printf("\n")
+
+	r := APILoadResponse{
+		Status:        string(status),
+		Message:       fmt.Sprintf(message, args...),
+		EncryptedData: encryptedData,
+	}
+
+	bytes, _ := json.Marshal(&r)
+	fmt.Fprintf(w, string(bytes))
+}
+
 func getLoginInfo(email, password, token string) (d.User, error, models.ErrorCode) {
 	if token != "" {
 		// Try token
@@ -200,14 +220,13 @@ func HandleSignUpV2(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("To confirm your account please click the link: %s?email=%s&token=%s", globalShapassSignupPath, info.Email, signupToken)
 	err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Sign up to shapass", msg)
 
-	fmt.Printf("User '%s' signed up! Email sent\n", info.Email)
-
 	if err != nil {
 		fmt.Printf("We could not sign signup email for user '%s': %v\n", info.Email, err)
 		LogAndRespond(w, StatusError, models.CodeCouldNotSendEmail, "We could not send signup email, try again later")
 		return
 	}
 
+	fmt.Printf("User '%s' signed up! Email sent\n", info.Email)
 	LogAndRespond(w, StatusOK, models.CodeOK, "Sent confirmation email to '%s' successfully!", info.Email)
 }
 
@@ -608,4 +627,62 @@ func HandleLoginExpire(w http.ResponseWriter, r *http.Request) {
 	}
 
 	LogAndRespond(w, StatusOK, models.CodeOK, "Deleted logins successfully!")
+}
+
+func HandleSave(w http.ResponseWriter, r *http.Request) {
+	// Read and parse the body
+	var info models.APISave
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &info)
+	if err != nil {
+		LogAndRespond(w, StatusError, models.CodeInvalidInput, "Could not create: invalid json data")
+		return
+	}
+
+	// Check required fields
+	if info.Data == "" {
+		LogAndRespond(w, StatusError, models.CodeInvalidInput, "Saving requires data field")
+		return
+	}
+
+	// Login info
+	user, err, errCode := getLoginInfo(info.Email, info.Password, info.Token)
+	if err != nil {
+		LogAndRespond(w, StatusError, errCode, "%v", err)
+		return
+	}
+
+	err, _, errCode = d.SaveEncryptedData(db, user, info.Data)
+	if err != nil {
+		LogAndRespond(w, StatusError, errCode, "%v", err)
+		return
+	}
+
+	LogAndRespond(w, StatusOK, models.CodeOK, "Saved encrypted data successfully!")
+}
+
+func HandleLoad(w http.ResponseWriter, r *http.Request) {
+	var info models.APILoad
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &info)
+	if err != nil {
+		LogAndRespond(w, StatusError, models.CodeInvalidInput, "Could not create: invalid json data")
+		return
+	}
+
+	// Login info
+	user, err, errCode := getLoginInfo(info.Email, info.Password, info.Token)
+	if err != nil {
+		LogAndRespond(w, StatusError, errCode, "%v", err)
+		return
+	}
+
+	err, encrData, errCode := d.LoadEncryptedData(db, user)
+
+	if err != nil {
+		LogAndRespond(w, StatusError, errCode, "%v", err)
+		return
+	}
+
+	LogAndRespondLoad(w, StatusOK, models.CodeOK, encrData, "Load encrypted data successfully!")
 }

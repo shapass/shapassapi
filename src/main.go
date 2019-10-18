@@ -51,6 +51,8 @@ func main() {
 		dbname = "shapassapi"
 	}
 
+	fmt.Printf("Email configured: %s\n", globalEmail)
+
 	var err error
 	db, err = data.OpenDatabase(dbhost, dbport, dbpass, dbname)
 	if err != nil {
@@ -70,6 +72,9 @@ func main() {
 	http.HandleFunc("/resetpassword", HandleMiddleware(HandleResetPassword, CheckRequest))
 	http.HandleFunc("/loginlist", HandleMiddleware(HandleLoginList, CheckRequest))
 	http.HandleFunc("/loginexpire", HandleMiddleware(HandleLoginExpire, CheckRequest))
+
+	http.HandleFunc("/save", HandleMiddleware(HandleSave, CheckRequest))
+	http.HandleFunc("/load", HandleMiddleware(HandleLoad, CheckRequest))
 
 	// Ok, this is a joke
 	http.HandleFunc("/teapot", HandleTeapot)

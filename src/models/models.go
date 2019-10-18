@@ -26,6 +26,15 @@ type APILogout struct {
 	Token string `json:"token"`
 }
 
+type APISave struct {
+	APILoginInfo
+	Data string `json:"data"`
+}
+
+type APILoad struct {
+	APILoginInfo
+}
+
 type APICreate struct {
 	APILoginInfo
 	Name      string `json:"name"`
