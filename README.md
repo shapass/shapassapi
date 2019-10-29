@@ -157,6 +157,29 @@ All the logins passed to this API call will be deleted.
 }
 ```
 
+### /save
+
+Sends data to be saved related to a logged in user.
+
+- Request body example
+
+```json
+{
+    "token": "login-token-here",
+    "data": "{'iv':[1, 2, ..., 15], 'data':'encrypted-data-here'}"
+}
+```
+
+### /load
+
+Loads the encrypted user data from the database.
+
+```json
+{
+    "token": "login-token-here",
+}
+```
+
 ## Error Codes
 
 The API returns the following error codes
