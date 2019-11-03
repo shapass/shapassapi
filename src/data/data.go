@@ -47,15 +47,16 @@ func OpenDatabase(host string, port string, password string, database string) (*
 	user := "admin"
 	ssl := "disable"
 
-	db, err := sql.Open("postgres", fmt.Sprintf(
+	connectString := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		host,
 		port,
 		user,
 		password,
 		database,
-		ssl),
-	)
+		ssl)
+	fmt.Printf("Attempting connection with database: %s\n", connectString)
+	db, err := sql.Open("postgres", connectString)
 	if err != nil {
 		fmt.Println("Could not connect to database: ", err)
 		return nil, err
@@ -70,6 +71,7 @@ func ActivateUser(db *sql.DB, email string, token string) (error, models.ErrorCo
 	err := row.Scan(&userID)
 
 	if err != nil || !userID.Valid {
+		fmt.Println("Invalid signup token or user already activated")
 		return fmt.Errorf("Invalid signup token or user already activated"), models.CodeInvalidToken
 	}
 
@@ -79,6 +81,18 @@ func ActivateUser(db *sql.DB, email string, token string) (error, models.ErrorCo
 
 	if err != nil {
 		return err, models.CodeInternalError
+	}
+	return nil, models.CodeOK
+}
+
+func UpdateSignupToken(db *sql.DB, email string, token string) (error, models.ErrorCode) {
+	query := "UPDATE users SET password_reset_token=$1 WHERE email=$2"
+
+	_, err := db.Exec(query, token, email)
+
+	if err != nil {
+		fmt.Printf("Could not update signup token for user %s: %v", email, err)
+		return fmt.Errorf("Could not update signup token for user %s", email), models.CodeInternalError
 	}
 	return nil, models.CodeOK
 }

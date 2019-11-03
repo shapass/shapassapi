@@ -230,6 +230,30 @@ func HandleSignUpV2(w http.ResponseWriter, r *http.Request) {
 	LogAndRespond(w, StatusOK, models.CodeOK, "Sent confirmation email to '%s' successfully!", info.Email)
 }
 
+func resendConfirmationEmail(info models.UserInfo) error {
+	// Create another token
+	signupToken, err := GenerateRandomString(64)
+	if err != nil {
+		return err
+	}
+	token := sha256.Sum256([]byte(signupToken))
+	hashedToken := hex.EncodeToString(token[:])
+
+	match, _ := d.PasswordMatches(db, info.Email, info.Password)
+	if match {
+		err, _ = d.UpdateSignupToken(db, info.Email, hashedToken)
+		if err != nil {
+			return err
+		}
+		// Registered successfully, send email
+		msg := fmt.Sprintf("To confirm your account please click the link: %s?email=%s&token=%s", globalShapassSignupPath, info.Email, signupToken)
+		err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Resent shapass verification", msg)
+		return nil
+	} else {
+		return fmt.Errorf("User information is incorrect")
+	}
+}
+
 func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
 	// Read and parse the body
 	var info models.UserInfo
@@ -259,6 +283,10 @@ func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
 	_, err, errCode := d.Login(db, info.Email, info.Password, hex.EncodeToString(hashedToken[:]))
 
 	if err != nil {
+		if errCode == models.CodeUserNotActivated {
+			// Send confirmation email again
+			resendConfirmationEmail(info)
+		}
 		LogAndRespond(w, StatusError, errCode, "%v", err)
 		return
 	}
@@ -685,4 +713,29 @@ func HandleLoad(w http.ResponseWriter, r *http.Request) {
 	}
 
 	LogAndRespondLoad(w, StatusOK, models.CodeOK, encrData, "Load encrypted data successfully!")
+}
+
+func ResendSignupVerificationEmail(w http.ResponseWriter, r *http.Request) {
+	var info models.UserInfo
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &info)
+	if err != nil {
+		LogAndRespond(w, StatusError, models.CodeInvalidInput, "Could not resend verification: invalid json data")
+		return
+	}
+
+	u, err := d.UserInfoFromEmail(db, info.Email)
+	if u.Activated.Bool {
+		LogAndRespond(w, StatusError, models.CodeCouldNotSendEmail, "User already activated")
+		return
+	}
+
+	err = resendConfirmationEmail(info)
+
+	if err != nil {
+		LogAndRespond(w, StatusError, models.CodeCouldNotSendEmail, "Could not resend verification email: %v", err)
+		return
+	}
+
+	LogAndRespond(w, StatusOK, models.CodeOK, "Resent verification email successfully!")
 }

@@ -72,6 +72,7 @@ func main() {
 	http.HandleFunc("/resetpassword", HandleMiddleware(HandleResetPassword, CheckRequest))
 	http.HandleFunc("/loginlist", HandleMiddleware(HandleLoginList, CheckRequest))
 	http.HandleFunc("/loginexpire", HandleMiddleware(HandleLoginExpire, CheckRequest))
+	http.HandleFunc("/resendverification", HandleMiddleware(ResendSignupVerificationEmail, CheckRequest))
 
 	http.HandleFunc("/save", HandleMiddleware(HandleSave, CheckRequest))
 	http.HandleFunc("/load", HandleMiddleware(HandleLoad, CheckRequest))
