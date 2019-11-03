@@ -173,7 +173,7 @@ func HandleSignUpConfirmation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	LogAndRespond(w, StatusOK, models.CodeOK, "User '%s' activated successfully!", email)
+	http.Redirect(w, r, globalShapassConfirmationPath+"?email="+email+"&confirmed=true", 301)
 }
 
 // HandleSignUpV2 does the signing up process, only if the email provided

@@ -19,6 +19,7 @@ var globalEmail string
 var globalEmailPassword string
 var globalShapassResetLink string
 var globalShapassSignupPath string
+var globalShapassConfirmationPath string
 
 func main() {
 	dbport := os.Getenv("SHAPASS_DATABASE_PORT")
@@ -30,12 +31,16 @@ func main() {
 	globalEmail = os.Getenv("ZOHO_SHAPASS_EMAIL")
 	globalShapassResetLink = os.Getenv("SHAPASS_RESET_PASSWORD_PATH")
 	globalShapassSignupPath = os.Getenv("SHAPASS_SIGNUP_CONFIRMATION_PATH")
+	globalShapassConfirmationPath = os.Getenv("SHAPASS_CONFIRMATION_PATH")
 
 	if globalShapassResetLink == "" {
 		globalShapassResetLink = "https://shapass.com/#/reset-password"
 	}
 	if globalShapassSignupPath == "" {
 		globalShapassSignupPath = "https://shapass.com/api/confirmation"
+	}
+	if globalShapassConfirmationPath == "" {
+		globalShapassConfirmationPath = "https://shapass.com/confirmation"
 	}
 
 	if dbport == "" {
