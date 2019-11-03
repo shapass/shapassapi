@@ -23,6 +23,7 @@ install: build
 	sudo systemctl daemon-reload
 reload:
 	sudo systemctl stop shapassapi
+	sudo cp .env /etc/default/shapassenv
 	sudo cp shapassapi /usr/bin/shapassapi
 	sudo systemctl start shapassapi
 
