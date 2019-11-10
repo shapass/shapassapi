@@ -20,6 +20,7 @@ var globalEmailPassword string
 var globalShapassResetLink string
 var globalShapassSignupPath string
 var globalShapassConfirmationPath string
+var globalShapassResetPasswordPath string
 
 func main() {
 	dbport := os.Getenv("SHAPASS_DATABASE_PORT")
