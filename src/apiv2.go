@@ -594,7 +594,6 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		}
 
 		LogAndRespond(w, StatusOK, models.CodeOK, "Password reset successfully!")
-		//http.Redirect(w, r, globalShapassConfirmationPath+"?email="+email+"&confirmed=true", 301)
 	}
 }
 
