@@ -63,21 +63,23 @@ func LogAndRespondList(w http.ResponseWriter, status APIStatus, code models.Erro
 }
 
 type APILoginResponse struct {
-	Status  string
-	Message string
-	Token   string
-	Code    models.ErrorCode
+	Status     string
+	Message    string
+	Token      string
+	LoginCount int64
+	Code       models.ErrorCode
 }
 
-func LogAndRespondLogin(w http.ResponseWriter, status APIStatus, code models.ErrorCode, token string, message string, args ...interface{}) {
+func LogAndRespondLogin(w http.ResponseWriter, status APIStatus, code models.ErrorCode, token string, loginCount int64, message string, args ...interface{}) {
 	fmt.Printf(message, args...)
 	fmt.Printf("\n")
 
 	r := APILoginResponse{
-		Status:  string(status),
-		Message: fmt.Sprintf(message, args...),
-		Token:   token,
-		Code:    code,
+		Status:     string(status),
+		Message:    fmt.Sprintf(message, args...),
+		Token:      token,
+		Code:       code,
+		LoginCount: loginCount,
 	}
 
 	bytes, _ := json.Marshal(&r)
@@ -160,7 +162,9 @@ func HandleSignUpConfirmation(w http.ResponseWriter, r *http.Request) {
 	token := r.Form.Get("token")
 
 	if email == "" || token == "" {
-		LogAndRespond(w, StatusError, models.CodeIncorrectSignupInfo, "Could not confirm signup, email and token are required")
+		codeStr := models.ErrorCode(models.CodeIncorrectSignupInfo).String()
+		fmt.Printf("Could not confirm signup, email and token are required\n3")
+		http.Redirect(w, r, globalShapassConfirmationPath+"?email="+email+"&confirmed=false&code="+codeStr, 301)
 		return
 	}
 
@@ -169,7 +173,8 @@ func HandleSignUpConfirmation(w http.ResponseWriter, r *http.Request) {
 
 	err, errCode := d.ActivateUser(db, email, hashedToken)
 	if err != nil {
-		LogAndRespond(w, StatusError, errCode, "Could not confirm signup: %v", err)
+		fmt.Printf("Could not confirm signup for '%s': %v\n", email, err)
+		http.Redirect(w, r, globalShapassConfirmationPath+"?email="+email+"&confirmed=false&code="+errCode.String(), 301)
 		return
 	}
 
@@ -280,7 +285,7 @@ func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
 
 	// Hash the token to be saved in the database
 	hashedToken := sha256.Sum256([]byte(randStr))
-	_, err, errCode := d.Login(db, info.Email, info.Password, hex.EncodeToString(hashedToken[:]))
+	_, err, errCode, loginCount := d.Login(db, info.Email, info.Password, hex.EncodeToString(hashedToken[:]))
 
 	if err != nil {
 		if errCode == models.CodeUserNotActivated {
@@ -291,7 +296,7 @@ func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	LogAndRespondLogin(w, StatusOK, models.CodeOK, randStr, "User '%s' logged in successfully!", info.Email)
+	LogAndRespondLogin(w, StatusOK, models.CodeOK, randStr, loginCount, "User '%s' logged in successfully!", info.Email)
 }
 
 func HandleListV2(w http.ResponseWriter, r *http.Request) {
@@ -553,7 +558,7 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		}
 
 		err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Reset Password",
-			fmt.Sprintf("To reset your password access: %s?token=%s&email=%s", globalShapassResetLink, resetToken, info.Email))
+			fmt.Sprintf("To reset your password access: %s?t=%s&email=%s", globalShapassResetLink, resetToken, info.Email))
 
 		if err != nil {
 			fmt.Println(err)

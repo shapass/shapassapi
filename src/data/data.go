@@ -168,25 +168,26 @@ func PasswordMatches(db *sql.DB, email string, password string) (bool, error) {
 	return true, nil
 }
 
-func Login(db *sql.DB, email string, password string, token string) (bool, error, models.ErrorCode) {
-	query := "SELECT id, password, activated FROM users WHERE email=$1"
+func Login(db *sql.DB, email string, password string, token string) (bool, error, models.ErrorCode, int64) {
+	query := "SELECT id, password, activated, login_count FROM users WHERE email=$1"
 	row := db.QueryRow(query, email)
 
 	var pw sql.NullString
 	var userID sql.NullInt64
 	var activated sql.NullBool
-	err := row.Scan(&userID, &pw, &activated)
+	var loginCount sql.NullInt64
+	err := row.Scan(&userID, &pw, &activated, &loginCount)
 
 	if err != nil || !pw.Valid {
-		return false, fmt.Errorf("User '%s' does not exist", email), models.CodeUserDoesNotExist
+		return false, fmt.Errorf("User '%s' does not exist", email), models.CodeUserDoesNotExist, -1
 	}
 
 	if !activated.Bool {
-		return false, fmt.Errorf("User '%s' is not activated", email), models.CodeUserNotActivated
+		return false, fmt.Errorf("User '%s' is not activated", email), models.CodeUserNotActivated, -1
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(pw.String), []byte(password)) != nil {
-		return false, fmt.Errorf("Incorrect password"), models.CodeIncorrectLoginInfo
+		return false, fmt.Errorf("Incorrect password"), models.CodeIncorrectLoginInfo, -1
 	}
 
 	// Create a login
@@ -198,7 +199,7 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 	// Set token which is already hashed by the caller
 	_, err = db.Exec(query, userID.Int64, token, expire)
 	if err != nil {
-		return false, fmt.Errorf("Could not login, service unavailable"), models.CodeInternalError
+		return false, fmt.Errorf("Could not login, service unavailable"), models.CodeInternalError, -1
 	}
 
 	// Update last login
@@ -208,7 +209,7 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 		fmt.Println(err)
 	}
 
-	return true, nil, models.CodeOK
+	return true, nil, models.CodeOK, loginCount.Int64
 }
 
 func UserInfoFromToken(db *sql.DB, token string) (User, error) {

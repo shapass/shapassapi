@@ -135,3 +135,38 @@ const (
 	// different from POST.
 	CodeInvalidMethod
 )
+
+func (e ErrorCode) String() string {
+	switch e {
+	case CodeOK:
+		return "OK"
+	case CodeInternalError:
+		return "InternalError"
+	case CodeNotLoggedIn:
+		return "NotLoggedIn"
+	case CodeIncorrectLoginInfo:
+		return "IncorrectLoginInfo"
+	case CodeIncorrectSignupInfo:
+		return "IncorrectSignupInfo"
+	case CodeUserNotActivated:
+		return "UserNotActivated"
+	case CodeUserDoesNotExist:
+		return "UserDoesNotExist"
+	case CodeRuleDoesNotExist:
+		return "RuleDoesNotExist"
+	case CodeInvalidInput:
+		return "InvalidInput"
+	case CodeInvalidToken:
+		return "InvalidToken"
+	case CodeCouldNotSendEmail:
+		return "CouldNotSendEmail"
+	case CodeInvalidAlgorithm:
+		return "InvalidAlgorithm"
+	case CodeResetPasswordDelay:
+		return "ResetPasswordDelay"
+	case CodeInvalidMethod:
+		return "InvalidMethod"
+	default:
+		return "InvalidErrorCode"
+	}
+}
