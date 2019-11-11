@@ -8,6 +8,9 @@ services:
       - .devenv
     networks:
       - shapass-net-dev
+    volumes:
+      - .:/api
+    command: ["go", "run", "./src/apiv2.go", "./src/main.go", "./src/middleware.go", "./src/utils.go"]
   postgres:
     image: hoshoyo/shapass-db
     ports:

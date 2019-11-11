@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -126,6 +127,12 @@ func LogAndRespondLoad(w http.ResponseWriter, status APIStatus, code models.Erro
 	fmt.Fprintf(w, string(bytes))
 }
 
+func timeHasElapsed(timestamp int64, duration time.Duration) bool {
+	t := time.Unix(timestamp, 0)
+	timeAllow := (t.Add(duration)).Before(time.Now().UTC())
+	return timeAllow
+}
+
 func getLoginInfo(email, password, token string) (d.User, error, models.ErrorCode) {
 	if token != "" {
 		// Try token
@@ -223,7 +230,7 @@ func HandleSignUpV2(w http.ResponseWriter, r *http.Request) {
 
 	// Registered successfully, send email
 	msg := fmt.Sprintf("To confirm your account please click the link: %s?email=%s&token=%s", globalShapassSignupPath, info.Email, signupToken)
-	err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Sign up to shapass", msg)
+	err = mail.SendMailToUser(!globalDebug, globalEmail, info.Email, globalEmailPassword, "Sign up to shapass", msg)
 
 	if err != nil {
 		fmt.Printf("We could not sign signup email for user '%s': %v\n", info.Email, err)
@@ -246,13 +253,21 @@ func resendConfirmationEmail(info models.UserInfo) error {
 
 	match, _ := d.PasswordMatches(db, info.Email, info.Password)
 	if match {
+		// Check if we can update, avoid spamming
+		err, lastSignupTokenTime := d.GetLastSignupTokenTime(db, info.Email)
+
+		// Resent every 5 minutes
+		if !timeHasElapsed(lastSignupTokenTime, time.Minute*5) {
+			return fmt.Errorf("Signup email can only be resent every 5 minutes")
+		}
+
 		err, _ = d.UpdateSignupToken(db, info.Email, hashedToken)
 		if err != nil {
 			return err
 		}
 		// Registered successfully, send email
 		msg := fmt.Sprintf("To confirm your account please click the link: %s?email=%s&token=%s", globalShapassSignupPath, info.Email, signupToken)
-		err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Resent shapass verification", msg)
+		err = mail.SendMailToUser(!globalDebug, globalEmail, info.Email, globalEmailPassword, "Resent shapass verification", msg)
 		return nil
 	} else {
 		return fmt.Errorf("User information is incorrect")
@@ -290,7 +305,10 @@ func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errCode == models.CodeUserNotActivated {
 			// Send confirmation email again
-			resendConfirmationEmail(info)
+			resentErr := resendConfirmationEmail(info)
+			if resentErr != nil {
+				fmt.Printf("An attempt to resend verification email was made but failed: %v\n", resentErr)
+			}
 		}
 		LogAndRespond(w, StatusError, errCode, "%v", err)
 		return
@@ -557,7 +575,7 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = mail.SendMailToUser(globalEmail, info.Email, globalEmailPassword, "Reset Password",
+		err = mail.SendMailToUser(!globalDebug, globalEmail, info.Email, globalEmailPassword, "Reset Password",
 			fmt.Sprintf("To reset your password access: %s?t=%s&email=%s", globalShapassResetLink, resetToken, info.Email))
 
 		if err != nil {

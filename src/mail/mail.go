@@ -37,7 +37,12 @@ func (mail *Mail) BuildMessage() string {
 	return message
 }
 
-func SendMailToUser(fromEmail string, toEmail string, password string, subject string, body string) error {
+func SendMailToUser(send bool, fromEmail string, toEmail string, password string, subject string, body string) error {
+	if !send {
+		fmt.Println(body)
+		return nil
+	}
+
 	mail := Mail{}
 	mail.senderId = fromEmail
 	mail.toIds = []string{toEmail}
