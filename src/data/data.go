@@ -66,7 +66,7 @@ func OpenDatabase(host string, port string, password string, database string) (*
 }
 
 func ActivateUser(db *sql.DB, email string, token string) (error, models.ErrorCode) {
-	row := db.QueryRow("SELECT id FROM users WHERE email = $1 AND password_reset_token = $2 AND activated = FALSE", email, token)
+	row := db.QueryRow("SELECT id FROM users WHERE email = $1 AND signup_token = $2 AND activated = FALSE", email, token)
 	var userID sql.NullInt64
 	err := row.Scan(&userID)
 
@@ -75,7 +75,7 @@ func ActivateUser(db *sql.DB, email string, token string) (error, models.ErrorCo
 		return fmt.Errorf("Invalid signup token or user already activated"), models.CodeInvalidToken
 	}
 
-	query := "UPDATE users SET activated = TRUE, password_reset_token = NULL WHERE id = $1"
+	query := "UPDATE users SET activated = TRUE, signup_token = NULL WHERE id = $1"
 
 	_, err = db.Exec(query, userID.Int64)
 
@@ -85,8 +85,22 @@ func ActivateUser(db *sql.DB, email string, token string) (error, models.ErrorCo
 	return nil, models.CodeOK
 }
 
+func GetLastSignupTokenTime(db *sql.DB, email string) (error, int64) {
+	query := "SELECT last_token_resent_time FROM users WHERE email=$1"
+	row := db.QueryRow(query, email)
+
+	var lastSignupTokenTime time.Time
+	err := row.Scan(&lastSignupTokenTime)
+	if err != nil {
+		fmt.Printf("Could not read last signup token time: %v\n", err)
+		return fmt.Errorf("Could not load last signup time for user '%s'", email), time.Now().UTC().Unix()
+	}
+
+	return nil, lastSignupTokenTime.UTC().Unix()
+}
+
 func UpdateSignupToken(db *sql.DB, email string, token string) (error, models.ErrorCode) {
-	query := "UPDATE users SET password_reset_token=$1 WHERE email=$2"
+	query := "UPDATE users SET signup_token=$1, last_token_resent_time=DEFAULT WHERE email=$2"
 
 	_, err := db.Exec(query, token, email)
 
@@ -98,7 +112,7 @@ func UpdateSignupToken(db *sql.DB, email string, token string) (error, models.Er
 }
 
 func CreateUser(db *sql.DB, email string, password string, token string) (error, models.ErrorCode) {
-	query := "INSERT INTO users (password, email, password_reset_token, activated) VALUES ($1, $2, $3, FALSE)"
+	query := "INSERT INTO users (password, email, signup_token, activated) VALUES ($1, $2, $3, FALSE)"
 
 	pw, err := bcrypt.GenerateFromPassword([]byte(password), 10)
 	if err != nil {
@@ -436,99 +450,6 @@ func getUserID(db *sql.DB, email string) (int, error) {
 		return 0, err
 	}
 	return int(id.Int64), nil
-}
-
-func SyncRules(db *sql.DB, in []ShaPassRule, email string) []error {
-	retErr := []error{}
-	rules, err := RulesList(db, email)
-	if err != nil {
-		retErr = append(retErr, fmt.Errorf("Could not sync, email %s does not exist or service is unavailable", email))
-		return retErr
-	}
-	userID, err := getUserID(db, email)
-	if err != nil {
-		retErr = append(retErr, fmt.Errorf("Could not sync, username %s does not exist or service is unavailable", email))
-		return retErr
-	}
-
-	// transform rules into a map
-	m := make(map[string]ShaPassRule)
-	for _, r := range rules {
-		m[r.Name] = r
-	}
-
-	updateRules := []ShaPassRule{}
-	insertRules := []ShaPassRule{}
-	for _, r := range in {
-		if _, ok := m[r.Name]; ok {
-			// do an update
-
-			// TODO(psv): when the timestamp format is decided
-			// put this back on, for now we always update the rule
-			//currentTime := m[r.Name].UpdatedAt
-			//incomeTime := time.Unix(r.UpdatedAtInt, 0)
-			//if incomeTime.After(currentTime) {
-			// append rule here
-			//}
-
-			updateRules = append(updateRules, r)
-			delete(m, r.Name)
-		} else {
-			// do an insert
-			insertRules = append(insertRules, r)
-		}
-	}
-
-	db.Exec("BEGIN TRANSACTION")
-
-	// Update rules that already exist
-	for _, u := range updateRules {
-		stmt := `
-			UPDATE pattern SET
-				length=$1,
-				prefix_salt=$2,
-				suffix_salt=$3
-			WHERE user_id=$4 AND service_name=$5
-		`
-		_, err := db.Exec(stmt, u.Length, u.Prefix, u.Suffix, userID, u.Name)
-		if err != nil {
-			fmt.Printf("Error updating rule %s for user %s: %v\n", u.Name, email, err)
-			retErr = append(retErr, fmt.Errorf("Error updating service %s", u.Name))
-		}
-	}
-
-	// Insert new rules
-	if len(insertRules) > 0 {
-		insertStmt := `
-			INSERT INTO pattern (user_id, service_name, prefix_salt, suffix_salt)
-			VALUES
-		`
-		var svcs []string
-		var args []interface{}
-		for i, rule := range insertRules {
-			index := (i * 4) + 1
-			insertStmt += fmt.Sprintf("($%d, $%d, $%d, $%d)", index, index+1, index+2, index+3)
-			svcs = append(svcs, rule.Name)
-			args = append(args, userID, rule.Name, rule.Prefix, rule.Suffix)
-			if i+1 != len(insertRules) {
-				insertStmt += ", "
-			}
-		}
-		_, err := db.Exec(insertStmt, args...)
-		if err != nil {
-			fmt.Println("Could not insert rules in the database for user:", email, err)
-			retErr = append(retErr, fmt.Errorf("Error registering services: %v", svcs))
-		}
-	}
-	if len(retErr) == 0 {
-		db.Exec("COMMIT")
-	} else {
-		db.Exec("ROLLBACK")
-	}
-
-	// Delete if more recent
-	// 'm' map holds the entries that should be deleted
-	return retErr
 }
 
 func DeleteAllRulesFromUser(db *sql.DB, userID int64) error {

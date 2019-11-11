@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 
 	"./data"
 )
@@ -20,13 +21,14 @@ var globalEmailPassword string
 var globalShapassResetLink string
 var globalShapassSignupPath string
 var globalShapassConfirmationPath string
-var globalShapassResetPasswordPath string
+var globalDebug bool
 
 func main() {
 	dbport := os.Getenv("SHAPASS_DATABASE_PORT")
 	dbhost := os.Getenv("SHAPASS_DATABASE_HOST")
 	dbpass := os.Getenv("SHAPASS_DATABASE_PASSWORD")
 	dbname := os.Getenv("SHAPASS_DATABASE_NAME")
+	debug := os.Getenv("SHAPASS_DEBUG")
 
 	globalEmailPassword = os.Getenv("ZOHO_SHAPASS_EMAIL_PASSWORD")
 	globalEmail = os.Getenv("ZOHO_SHAPASS_EMAIL")
@@ -35,7 +37,7 @@ func main() {
 	globalShapassConfirmationPath = os.Getenv("SHAPASS_CONFIRMATION_PATH")
 
 	if globalShapassResetLink == "" {
-		globalShapassResetLink = "https://shapass.com/#/reset-password"
+		globalShapassResetLink = "https://shapass.com/reset-password"
 	}
 	if globalShapassSignupPath == "" {
 		globalShapassSignupPath = "https://shapass.com/api/confirmation"
@@ -43,6 +45,8 @@ func main() {
 	if globalShapassConfirmationPath == "" {
 		globalShapassConfirmationPath = "https://shapass.com/confirmation"
 	}
+
+	globalDebug, _ = strconv.ParseBool(debug)
 
 	if dbport == "" {
 		dbport = "5432"
