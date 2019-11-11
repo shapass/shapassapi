@@ -561,6 +561,9 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	LogAndRespond(w, StatusError, models.CodeCouldNotSendEmail, "Function temporarily unavailable, try again later")
+	return
+
 	if info.Token == "" {
 		// Stage 1, send token by email and save it to the database hashed
 		resetToken, err := GenerateRandomString(64)
@@ -583,8 +586,8 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 			LogAndRespond(w, StatusError, models.CodeCouldNotSendEmail, "We could not send reset email, try again later")
 			return
 		}
-
 		LogAndRespond(w, StatusOK, models.CodeOK, "Password reset request successful, check your email")
+
 	} else {
 		// Stage 2, really reset password
 		if info.NewPassword == "" {
