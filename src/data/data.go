@@ -193,15 +193,16 @@ func Login(db *sql.DB, email string, password string, token string) (bool, error
 	err := row.Scan(&userID, &pw, &activated, &loginCount)
 
 	if err != nil || !pw.Valid {
-		return false, fmt.Errorf("User '%s' does not exist", email), models.CodeUserDoesNotExist, -1
-	}
-
-	if !activated.Bool {
-		return false, fmt.Errorf("User '%s' is not activated", email), models.CodeUserNotActivated, -1
+		return false, fmt.Errorf("User '%s' does not exist", email), models.CodeUserError, -1
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(pw.String), []byte(password)) != nil {
 		return false, fmt.Errorf("Incorrect password"), models.CodeIncorrectLoginInfo, -1
+	}
+
+	if !activated.Bool {
+		// This error can be sent here since the user already sent the correct password
+		return false, fmt.Errorf("User '%s' is not activated", email), models.CodeUserNotActivated, -1
 	}
 
 	// Create a login
@@ -237,7 +238,7 @@ func UserInfoFromToken(db *sql.DB, token string) (User, error) {
 	var user User
 	err := row.Scan(&user.ID, &user.Email, &user.HashedPassword, &user.LastLogin, &user.Activated)
 	if err != nil {
-		return User{}, fmt.Errorf("Not logged in")
+		return User{}, fmt.Errorf("User '%s' is not logged in", user.Email.String)
 	}
 
 	return user, nil
@@ -361,7 +362,7 @@ func CreateRuleForUser(db *sql.DB, user User, prefix string, suffix string, leng
 
 	err := row.Scan(&id, &serviceName, &userEmail)
 	if err != nil {
-		return fmt.Errorf("Could not find user in the database: %v %s, %s", err, name, user.Email.String), false, models.CodeUserDoesNotExist
+		return fmt.Errorf("Could not find user in the database: %v %s, %s", err, name, user.Email.String), false, models.CodeUserError
 	}
 
 	if serviceName.Valid {
@@ -412,7 +413,7 @@ func DeleteRule(db *sql.DB, email string, svc string) (error, models.ErrorCode) 
 
 	err := row.Scan(&id, &serviceName, &userEmail)
 	if err != nil {
-		return fmt.Errorf("Could not find user in the database"), models.CodeUserDoesNotExist
+		return fmt.Errorf("Could not find user in the database"), models.CodeUserError
 	}
 
 	if !serviceName.Valid {
@@ -493,7 +494,7 @@ func SavePasswordResetToken(db *sql.DB, email string, hashedToken string) (error
 	err := row.Scan(&userID, &lastPwResetTime, &activated)
 	if err != nil {
 		fmt.Println(err)
-		return fmt.Errorf("User does not exist"), models.CodeUserDoesNotExist
+		return fmt.Errorf("User does not exist"), models.CodeUserError
 	}
 
 	if !activated.Bool {

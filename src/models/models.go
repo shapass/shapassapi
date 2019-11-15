@@ -134,6 +134,10 @@ const (
 	// An API request was received with a method
 	// different from POST.
 	CodeInvalidMethod
+
+	// Generic user error, could not access user information
+	// either the user is not activated or not even registered.
+	CodeUserError
 )
 
 func (e ErrorCode) String() string {

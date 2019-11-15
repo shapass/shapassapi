@@ -139,7 +139,8 @@ func getLoginInfo(email, password, token string) (d.User, error, models.ErrorCod
 		hashedToken := sha256.Sum256([]byte(token))
 		user, err := d.UserInfoFromToken(db, hex.EncodeToString(hashedToken[:]))
 		if err == nil && !user.Activated.Bool {
-			return d.User{}, fmt.Errorf("User not activated"), models.CodeUserNotActivated
+			fmt.Printf("Trying to get login information using token for user '%s' which is not activated", email)
+			return d.User{}, fmt.Errorf("Error trying to access user information"), models.CodeUserNotActivated
 		}
 		return user, err, models.CodeNotLoggedIn
 	} else if email != "" && password != "" {
@@ -155,11 +156,12 @@ func getLoginInfo(email, password, token string) (d.User, error, models.ErrorCod
 		}
 
 		if !user.Activated.Bool {
+			fmt.Printf("Trying to get login information using password for user '%s' which is not activated", email)
 			return d.User{}, fmt.Errorf("User not activated"), models.CodeUserNotActivated
 		}
 		return user, nil, models.CodeOK
 	} else {
-		return d.User{}, fmt.Errorf("Not logged in"), models.CodeNotLoggedIn
+		return d.User{}, fmt.Errorf("User '%s' is not logged in", email), models.CodeNotLoggedIn
 	}
 }
 
@@ -310,7 +312,7 @@ func HandleLoginV2(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("An attempt to resend verification email was made but failed: %v\n", resentErr)
 			}
 		}
-		LogAndRespond(w, StatusError, errCode, "%v", err)
+		LogAndRespond(w, StatusError, models.CodeUserError, "%v", err)
 		return
 	}
 
@@ -571,6 +573,11 @@ func HandleResetPassword(w http.ResponseWriter, r *http.Request) {
 		hashedToken := sha256.Sum256([]byte(resetToken))
 		err, errCode := d.SavePasswordResetToken(db, info.Email, hex.EncodeToString(hashedToken[:]))
 		if err != nil {
+			// Avoid sending not activated error
+			if errCode == models.CodeUserNotActivated {
+				errCode = models.CodeUserError
+			}
+			fmt.Println(err)
 			LogAndRespond(w, StatusError, errCode, "Password reset failed: Invalid data")
 			return
 		}

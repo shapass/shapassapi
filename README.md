@@ -243,4 +243,9 @@ The API returns the following error codes
     // An API request was received with a method
     // different from POST.
     13 => CodeInvalidMethod
+
+    // Generic error caused when user information could 
+    // not be accessed because the API call is not allowed to
+    // send information about user status.
+    14 => CodeUserError
 ```
